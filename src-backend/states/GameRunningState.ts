@@ -218,6 +218,8 @@ export class GameRunningState implements IState {
             /** 标记是否已经尝试过退出游戏，避免重复调用 */
             let hasTriedQuit = false;
             let androidUnknownStageCount = 0;
+            /** 标记当前 interval tick 是否仍在执行，防止并发 */
+            let isCheckInFlight = false;
 
             /**
              * 安全的 resolve，防止重复调用
@@ -379,34 +381,42 @@ export class GameRunningState implements IState {
 
             // 定期检查 signal 状态 (作为 abort 事件的兜底)
             stopCheckInterval = setInterval(async () => {
-                if (signal.aborted) {
-                    safeResolve('interrupted');
-                    return;
-                }
-
-                // 安卓端模式没有 LCU gameflow 事件，采用“阶段识别连续失败”作为结束判定
-                if (settingsStore.get('gameClient') === GameClient.ANDROID) {
-                    const win = await windowHelper.findLOLWindow('ANDROID_ONLY');
-                    if (!win) {
-                        logger.info("[GameRunningState] 安卓端检测到模拟器窗口已关闭，判定本局结束");
-                        safeResolve('ended');
+                if (isCheckInFlight) return; // 上一 tick 尚未完成，跳过本次
+                isCheckInFlight = true;
+                try {
+                    if (signal.aborted) {
+                        safeResolve('interrupted');
                         return;
                     }
 
-                    const stageResult = await tftOperator.getGameStage();
-                    const hasValidStage = Boolean(stageResult.stageText) && stageResult.type !== GameStageType.UNKNOWN;
+                    // 安卓端模式没有 LCU gameflow 事件，采用"阶段识别连续失败"作为结束判定
+                    if (settingsStore.get('gameClient') === GameClient.ANDROID) {
+                        const win = await windowHelper.findLOLWindow('ANDROID_ONLY');
+                        if (!win) {
+                            logger.info("[GameRunningState] 安卓端检测到模拟器窗口已关闭，判定本局结束");
+                            safeResolve('ended');
+                            return;
+                        }
 
-                    if (hasValidStage) {
-                        androidUnknownStageCount = 0;
-                        return;
-                    }
+                        const stageResult = await tftOperator.getGameStage();
+                        const hasValidStage = Boolean(stageResult.stageText) && stageResult.type !== GameStageType.UNKNOWN;
 
-                    androidUnknownStageCount += 1;
-                    logger.debug(`[GameRunningState] 安卓端阶段识别失败计数: ${androidUnknownStageCount}/${ANDROID_UNKNOWN_STAGE_THRESHOLD}`);
-                    if (androidUnknownStageCount >= ANDROID_UNKNOWN_STAGE_THRESHOLD) {
-                        logger.info("[GameRunningState] 安卓端连续识别不到有效阶段，判定本局已结束");
-                        safeResolve('ended');
+                        if (hasValidStage) {
+                            androidUnknownStageCount = 0;
+                            return;
+                        }
+
+                        androidUnknownStageCount += 1;
+                        logger.debug(`[GameRunningState] 安卓端阶段识别失败计数: ${androidUnknownStageCount}/${ANDROID_UNKNOWN_STAGE_THRESHOLD}`);
+                        if (androidUnknownStageCount >= ANDROID_UNKNOWN_STAGE_THRESHOLD) {
+                            logger.info("[GameRunningState] 安卓端连续识别不到有效阶段，判定本局已结束");
+                            safeResolve('ended');
+                        }
                     }
+                } catch (err: any) {
+                    logger.warn(`[GameRunningState] 定时检测异常: ${err?.message ?? err}`);
+                } finally {
+                    isCheckInFlight = false;
                 }
             }, ABORT_CHECK_INTERVAL_MS);
         });
@@ -450,7 +460,9 @@ export class GameRunningState implements IState {
                 logger.debug('[GameRunningState] 用户已关闭游戏浮窗，跳过浮窗显示');
             } else {
                 // 获取游戏窗口信息（由 TftOperator.init() 在 GameLoadingState 中已初始化）
-                const windowInfo = await windowHelper.findLOLWindow();
+                const gameClient = settingsStore.get('gameClient');
+                const windowScope = gameClient === GameClient.ANDROID ? 'ANDROID_ONLY' : 'RIOT_PC_ONLY';
+                const windowInfo = await windowHelper.findLOLWindow(windowScope);
             
                 if (windowInfo) {
                     // 打开浮窗（传入游戏窗口的物理像素坐标）

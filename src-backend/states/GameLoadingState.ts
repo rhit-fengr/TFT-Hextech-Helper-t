@@ -75,6 +75,7 @@ export class GameLoadingState implements IState {
     private waitForGameToLoad(signal: AbortSignal): Promise<boolean> {
         return new Promise((resolve) => {
             let intervalId: NodeJS.Timeout | null = null;
+            let androidInitDone = false;
 
             /**
              * 清理函数：确保定时器被正确清除
@@ -114,11 +115,14 @@ export class GameLoadingState implements IState {
                         const windowInfo = await windowHelper.findLOLWindow('ANDROID_ONLY');
                         if (windowInfo) {
                             // 安卓模式下，模拟器窗口常驻，不能只靠窗口存在判定进局。
-                            // 这里增加一次阶段识别：只有能识别到有效阶段（如 2-1）才算真正进入对局。
-                            const initResult = await tftOperator.init();
-                            if (!initResult.success) {
-                                logger.debug("[GameLoadingState] 安卓端窗口已找到，但截图初始化失败，继续等待...");
-                                return;
+                            // init() 较昂贵（包含窗口查找与截图配置），只需成功一次即可。
+                            if (!androidInitDone) {
+                                const initResult = await tftOperator.init();
+                                if (!initResult.success) {
+                                    logger.debug("[GameLoadingState] 安卓端窗口已找到，但截图初始化失败，继续等待...");
+                                    return;
+                                }
+                                androidInitDone = true;
                             }
 
                             const stageResult = await tftOperator.getGameStage();
@@ -133,6 +137,7 @@ export class GameLoadingState implements IState {
                             resolve(true);
                             return;
                         }
+                        androidInitDone = false; // 窗口消失时重置，以便下次重新 init
                     } else {
                         await inGameApi.get(InGameApiEndpoints.ALL_GAME_DATA);
                         signal.removeEventListener("abort", onAbort);
