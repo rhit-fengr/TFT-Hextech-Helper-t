@@ -88,13 +88,13 @@ export class LobbyState implements IState {
     async action(signal: AbortSignal): Promise<IState> {
         signal.throwIfAborted();
 
-        if (!this.lcuManager) {
-            throw Error("[LobbyState] 检测到客户端未启动！");
-        }
-
         if (settingsStore.get('gameClient') === GameClient.ANDROID) {
             logger.info("[LobbyState] 安卓端模式不走 LCU 排队，回到游戏加载等待状态");
             return new GameLoadingState();
+        }
+
+        if (!this.lcuManager) {
+            throw Error("[LobbyState] 检测到客户端未启动！");
         }
 
         // 获取用户选择的游戏模式

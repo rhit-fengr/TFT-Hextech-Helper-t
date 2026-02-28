@@ -67,23 +67,24 @@ class WindowHelper {
      *              nut-js 的 getWindows() 返回的是物理像素坐标，不需要额外的 DPI 转换
      * @returns 找到的游戏窗口信息，如果没找到则返回 null
      */
-    public async findLOLWindow(scope: WindowSearchScope = 'ANY'): Promise<WindowInfo | null> {
+    public async findLOLWindow(scope: WindowSearchScope = 'RIOT_PC_ONLY'): Promise<WindowInfo | null> {
         try {
             // 获取所有窗口
             const windows = await getWindows();
             logger.debug(`[WindowHelper] 找到 ${windows.length} 个窗口`);
+
+            // 候选标题列表根据 scope 一次性确定，避免在循环中重复分配
+            const titleCandidates = scope === 'RIOT_PC_ONLY'
+                ? RIOT_PC_WINDOW_TITLES
+                : scope === 'ANDROID_ONLY'
+                    ? ANDROID_WINDOW_TITLES
+                    : [...RIOT_PC_WINDOW_TITLES, ...ANDROID_WINDOW_TITLES];
 
             // 遍历查找 LOL 窗口
             for (const window of windows) {
                 try {
                     const title = await window.title;
                     
-                    const titleCandidates = scope === 'RIOT_PC_ONLY'
-                        ? RIOT_PC_WINDOW_TITLES
-                        : scope === 'ANDROID_ONLY'
-                            ? ANDROID_WINDOW_TITLES
-                            : [...RIOT_PC_WINDOW_TITLES, ...ANDROID_WINDOW_TITLES];
-
                     const isTargetWindow = titleCandidates.some(
                         candidate => title && title.includes(candidate)
                     );
@@ -139,7 +140,7 @@ class WindowHelper {
      * @description 便捷方法，直接返回可用于截图计算的坐标
      * @returns { x, y } 坐标对象，如果没找到则返回 null
      */
-    public async findLOLWindowOrigin(scope: WindowSearchScope = 'ANY'): Promise<{ x: number; y: number } | null> {
+    public async findLOLWindowOrigin(scope: WindowSearchScope = 'RIOT_PC_ONLY'): Promise<{ x: number; y: number } | null> {
         const windowInfo = await this.findLOLWindow(scope);
         if (windowInfo) {
             return { x: windowInfo.left, y: windowInfo.top };
