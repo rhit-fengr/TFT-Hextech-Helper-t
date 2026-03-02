@@ -162,9 +162,9 @@ export class AndroidEmulatorAdapter implements GameAdapter {
                 }
                 case "EQUIP": {
                     const itemIndex = parseSlotIndex(action.payload.itemIndex);
-                    const boardLocation = action.payload.toBoard;
-                    if (itemIndex !== null && isBoardLocation(boardLocation)) {
-                        await tftOperator.equipToBoardUnit(itemIndex, boardLocation);
+                    const targetBoard = await this.resolveBoardLocation(action.payload.toBoard);
+                    if (itemIndex !== null && targetBoard) {
+                        await tftOperator.equipToBoardUnit(itemIndex, targetBoard);
                     }
                     break;
                 }
@@ -175,7 +175,10 @@ export class AndroidEmulatorAdapter implements GameAdapter {
                     break;
                 }
                 case "NOOP":
+                    break;
                 case "SELL":
+                    logger.warn("SELL plans are not yet supported by AndroidEmulatorAdapter; ignoring SELL action.");
+                    break;
                 default:
                     break;
             }
