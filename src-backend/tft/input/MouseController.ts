@@ -115,9 +115,30 @@ export class MouseController {
             throw new Error("[MouseController] 尚未设置游戏窗口基准点，请先调用 setGameWindowOrigin()");
         }
 
+        // 支持两种坐标输入：
+        // 1. 百分比坐标（0-1）：按实际窗口宽高换算（两个分量都在 [0,1] 时触发）
+        // 2. 像素坐标（基于 1024x768）：按像素 * scaleX/scaleY 的兼容逻辑
+        // 注意：仅当 x 和 y 同时在 [0,1] 范围内才视为百分比坐标，否则退回像素模式。
+        // 边界情况：像素值恰好为 0 或 1 时会被判定为百分比，但这类坐标在 1024x768 中极少有效。
+        const isPercentX = offset.x >= 0 && offset.x <= 1;
+        const isPercentY = offset.y >= 0 && offset.y <= 1;
+
+        let relativeX: number;
+        let relativeY: number;
+
+        if (isPercentX && isPercentY) {
+            // 百分比坐标：先换算为基准分辨率下的像素，再乘缩放
+            relativeX = offset.x * MouseController.BASE_WIDTH * this.scaleX;
+            relativeY = offset.y * MouseController.BASE_HEIGHT * this.scaleY;
+        } else {
+            // 兼容旧逻辑：offset 视为基于 1024x768 的像素坐标
+            relativeX = offset.x * this.scaleX;
+            relativeY = offset.y * this.scaleY;
+        }
+
         return new Point(
-            Math.round(this.gameWindowOrigin.x + offset.x * this.scaleX),
-            Math.round(this.gameWindowOrigin.y + offset.y * this.scaleY)
+            Math.round(this.gameWindowOrigin.x + relativeX),
+            Math.round(this.gameWindowOrigin.y + relativeY)
         );
     }
 

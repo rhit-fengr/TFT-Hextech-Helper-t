@@ -122,7 +122,15 @@ class Logger {
             // Windows: C:\Users\Username\AppData\Roaming\tft-hextech-helper\logs
             // macOS: ~/Library/Application Support/tft-hextech-helper/logs
             // Linux: ~/.config/tft-hextech-helper/logs
-            const userDataDir = path.join(os.homedir(), process.platform === 'win32' ? 'AppData/Roaming' : '.config', 'tft-hextech-helper');
+            let userDataDir: string;
+            if (process.platform === 'win32') {
+                const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+                userDataDir = path.join(appData, 'tft-hextech-helper');
+            } else if (process.platform === 'darwin') {
+                userDataDir = path.join(os.homedir(), 'Library', 'Application Support', 'tft-hextech-helper');
+            } else {
+                userDataDir = path.join(os.homedir(), '.config', 'tft-hextech-helper');
+            }
             const logsDir = path.join(userDataDir, 'logs');
             
             fs.ensureDirSync(logsDir);

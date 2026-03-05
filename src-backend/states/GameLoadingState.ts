@@ -152,8 +152,6 @@ export class GameLoadingState implements IState {
                                     continue;
                                 }
 
-                                preferredAndroidWindow = candidate;
-
                                 const stageResult = await tftOperator.getGameStage();
                                 if (stageResult.type === GameStageType.UNKNOWN || !stageResult.stageText) {
                                     logger.debug(
@@ -162,6 +160,8 @@ export class GameLoadingState implements IState {
                                     );
                                     continue;
                                 }
+
+                                preferredAndroidWindow = candidate;
 
                                 logger.info(
                                     `[GameLoadingState] 安卓端检测到有效阶段: ${stageResult.stageText} ` +

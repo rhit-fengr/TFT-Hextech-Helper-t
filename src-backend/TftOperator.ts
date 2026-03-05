@@ -254,6 +254,32 @@ class TftOperator {
         windowInfo?: { left: number; top: number; width: number; height: number };
         usedFallback: boolean;
     }> {
+        // When a windowInfoOverride is provided (e.g. GameLoadingState probing candidates),
+        // run a fresh init directly — caller is responsible for concurrency.
+        if (windowInfoOverride) {
+            return this._doInit(windowInfoOverride);
+        }
+
+        // Without an override, deduplicate concurrent calls via initInFlight.
+        if (this.initInFlight) {
+            return this.initInFlight;
+        }
+
+        this.initInFlight = this._doInit(undefined).finally(() => {
+            this.initInFlight = null;
+        });
+
+        return this.initInFlight;
+    }
+
+    /**
+     * 实际执行初始化逻辑（内部方法，由 init() 调用）
+     */
+    private async _doInit(windowInfoOverride?: WindowInfo): Promise<{
+        success: boolean;
+        windowInfo?: { left: number; top: number; width: number; height: number };
+        usedFallback: boolean;
+    }> {
         try {
             // ============================================================
             // 方案 1：使用 nut-js 窗口 API 精确查找 LOL 窗口位置
@@ -1626,13 +1652,7 @@ class TftOperator {
         // 初始化时清空阶段识别历史
         this.stageRecognitionHistory = [];
 
-        if (!this.initInFlight) {
-            this.initInFlight = this.init().finally(() => {
-                this.initInFlight = null;
-            });
-        }
-
-        const initResult = await this.initInFlight;
+        const initResult = await this.init();
         if (!initResult.success || !this.gameWindowRegion) {
             throw new Error("[TftOperator] 初始化失败，请确认游戏窗口可见且未最小化");
         }
