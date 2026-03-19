@@ -4,11 +4,8 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import {
-    applySeasonPackAssetPaths,
-    loadJinChanSeasonPackSnapshot,
-    syncJinChanSeasonPackAssets,
-} from "../../src-backend/data";
+import { applySeasonPackAssetPaths, syncJinChanSeasonPackAssets } from "../../src-backend/data/JinChanSeasonPackAssetSyncer";
+import { loadJinChanSeasonPackSnapshot } from "../../src-backend/data/JinChanSeasonPackLoader";
 
 const FIXTURE_ROOT = path.resolve(
     process.cwd(),

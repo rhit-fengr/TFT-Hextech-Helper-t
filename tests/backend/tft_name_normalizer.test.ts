@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { equipmentNamesMatch, normalizeEquipmentName } from "../../src-backend/data";
+import { equipmentNamesMatch, normalizeEquipmentName } from "../../src-backend/data/TftNameNormalizer";
 
 test("equipment name normalizer maps shorthand aliases to canonical data names", () => {
     assert.equal(normalizeEquipmentName("反曲弓"), "反曲之弓");
