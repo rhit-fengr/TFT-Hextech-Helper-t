@@ -91,11 +91,15 @@ export class GameRunningState implements IState {
         this.lcuManager = gameClient === GameClient.ANDROID ? null : LCUManager.getInstance();
 
         // 记录当前平台适配器健康状态（便于后续迁移期定位问题）
-        const adapterHealth = await getAdapterByClient(gameClient).healthCheck();
-        if (!adapterHealth.ok) {
-            logger.warn(`[GameRunningState] 平台适配器健康检查失败: ${adapterHealth.detail ?? "unknown"}`);
+        if (gameClient !== GameClient.RIOT_PC) {
+            const adapterHealth = await getAdapterByClient(gameClient).healthCheck();
+            if (!adapterHealth.ok) {
+                logger.warn(`[GameRunningState] 平台适配器健康检查失败: ${adapterHealth.detail ?? "unknown"}`);
+            } else {
+                logger.debug(`[GameRunningState] 平台适配器健康检查通过: ${adapterHealth.detail ?? "ok"}`);
+            }
         } else {
-            logger.debug(`[GameRunningState] 平台适配器健康检查通过: ${adapterHealth.detail ?? "ok"}`);
+            logger.debug("[GameRunningState] 跳过 RIOT_PC 平台适配器健康检查（当前不用于实际游戏输入）");
         }
 
         // 2.5 根据当前模式切换英雄模板赛季（加载对应赛季的棋子名称模板）

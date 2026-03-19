@@ -91,8 +91,8 @@ function mapShop(shop: OcrPayload["shop"]): ShopOffer[] {
 
 function usage(): void {
     console.log("Usage:");
-    console.log("  npm run pc:logic -- <observed-state-json>");
-    console.log("  npx tsx scripts/convert-liveclient-to-observed.ts <input-json> <output-json>");
+    console.log("  npm run state:convert -- <liveclient-ocr-json> <observed-state-json>");
+    console.log("  npx tsx scripts/convert-liveclient-to-observed.ts <liveclient-ocr-json> <observed-state-json>");
 }
 
 async function main(): Promise<void> {

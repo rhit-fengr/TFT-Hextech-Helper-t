@@ -16,7 +16,7 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "typecheck:migration": "tsc -p tsconfig.migration.json --noEmit",
-    "test:unit": "node --import tsx --test tests/backend/**/*.test.ts",
+    "test:unit": "node --import tsx --test tests/backend",
     "pc:logic": "tsx scripts/run-pc-logic.ts",
     "android:sim": "tsx scripts/run-android-simulation.ts",
     "android:ocr": "tsx scripts/run-android-recognition-replay.ts",

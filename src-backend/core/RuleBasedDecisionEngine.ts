@@ -153,6 +153,7 @@ export class RuleBasedDecisionEngine implements DecisionEngine {
         if (state.stageType === GameStageType.AUGMENT && state.augments && state.augments.length > 0) {
             const selected = [...state.augments].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
             addPlan("PICK_AUGMENT", 100, "进入海克斯回合，优先选择评分最高的强化", { slot: selected.slot });
+            return plans;
         }
 
         // 关键回合升人口节奏（参考自动运营常见节奏：2-1/2-5/3-2/4-2/5-1）
