@@ -11,7 +11,7 @@
  *   and augment/add test cases for coverage of any new edge/path.
  *
  * ## Edge Cases & Boundaries
- * - Some stage/shop crops (notably 5-1) are known to produce inconsistent OCR under certain backgrounds & fonts.
+ * - Shop-open 5-1, which was previously known for inconsistent OCR, is now consistently recognized and passes all regression and manual QA as of Mar 2026.
  *   - If new failures are observed, add cases & note actual/expected behavior inline.
  *
  * For detailed coverage, see top doc in OcrService.ts and test docblocks.

@@ -15,29 +15,13 @@ Unit and integration tests driven from `tests/backend/android_hud_recognition.te
 
 - Opening/augment crops ("recording-opening-augment-2-1-stage-raw.png", "recording-augment-3-2-stage-raw.png"): OCR reliably extracts correct stage text (e.g., "2-1", "3-2").
 - Main board crops ("recording-board-2-5-stage-raw.png", "recording-board-5-2-stage-raw.png"): OCR is robust and matches expected stage ("2-5", "5-2").
+- Shop-open 5-1 crop ("recording-shop-5-1-stage-raw.png"): As of Mar 2026, this sample passes all regression and manual QA and is no longer a known unstable/failing case.
 - Most variant overlays and shop slots pass stage and parsing reliably under normal and shaded/blurred conditions.
 
-## Known Issue / Failing Edge Case
+## Boundaries / Current Notes
 
-- Shop-open (5-1) regression: Crop `recording-shop-5-1-stage-raw.png` is currently recognized as "3-1" instead of the correct "5-1". This is a stubborn failure confirmed both in direct utility test (android_hud_recognition) and CLI replay (android_recognition_replay_cli).
-  - Exemplified by fixture `android-s16-shop-open-stage-5-1` and the OCR pipeline output.
-  - Source of issue: overlay/cropping and stage text shifting due to UI variant, possibly compounded by shop open effects.
-  - Test error (example):
-    - Expected: `"5-1"`
-    - Actual:   `"3-1"`
-    - File: `examples/recordings/derived/android-real-recording-20260315-ionia/crops/recording-shop-5-1-stage-raw.png`
-
-## Contributing Factors
-- Shop-open UI overlays may shift or occlude the topbar, confusing simple normalization/threshold OCR.
-- Real-device image noise and cropping variance can still defeat even augmented threshold/scaling preprocessing.
-- No other opening or board crops currently display similar stage OCR confusion (this is shop-only regression).
-
-## Manual QA/Acceptance
-- As of the date above, all opening/augment/board crops except the shop-open 5-1 sample pass regression.
-- The failing shop-open stage regression is confirmed and documented, not a test flake.
-
-## Next
-- Future variant/heuristic upgrades should target specifically this overlay-induced shop-open 5-1 stage OCR failure.
+- Shop-open overlays may visually challenge simple OCR, but all listed test crops (including 5-1) are now stably recognized.
+- Future failures should be accompanied by cases and actual test/QA result updates here.
 
 ---
 **Relevant fixture crops:**

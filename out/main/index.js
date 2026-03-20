@@ -11970,13 +11970,13 @@ app.whenReady().then(async () => {
   console.log("✅ [Main] 原生模块检查通过");
   console.log("🚀 [Main] 正在加载业务模块...");
   try {
-    const ServicesModule = await import("./chunks/index-CD3jwfWY.js");
+    const ServicesModule = await import("./chunks/index-C81Ij9C_.js");
     hexService = ServicesModule.hexService;
     pcLogicRunner = ServicesModule.pcLogicRunner;
     androidSimulationRunner = ServicesModule.androidSimulationRunner;
     androidRecognitionReplayRunner = ServicesModule.androidRecognitionReplayRunner;
     tftDataService = ServicesModule.tftDataService;
-    const TftOperatorModule = await import("./chunks/TftOperator-CYmHsHyv.js").then((n) => n.T);
+    const TftOperatorModule = await import("./chunks/TftOperator-DwHmYU8R.js").then((n) => n.T);
     tftOperator = TftOperatorModule.tftOperator;
     const LineupModule = await import("./chunks/index-BZspSCi7.js");
     lineupLoader = LineupModule.lineupLoader;

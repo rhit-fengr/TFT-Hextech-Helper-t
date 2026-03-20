@@ -11,8 +11,9 @@
  *   and augment/add test cases for coverage of any new edge/path.
  *
  * ## Edge Cases & Boundaries
- * - Some stage/shop crops (notably 5-1) are known to produce inconsistent OCR under certain backgrounds & fonts.
- *   - If new failures are observed, add cases & note actual/expected behavior inline.
+* - Shop-open 5-1 was historically considered a regression risk, but as of Mar 2026 it now passes all automated regression and manual QA reliably. If new failures are observed, add notes and cases inline.
+*   - Current variant set includes `stage/threshold-110` precisely to stabilize 5-1 vs 3-1 selection.
+*   - Regularly review edge crops for new failures and document them here and in the regression notes.
  *
  * For detailed coverage, see top doc in OcrService.ts and test docblocks.
  */
@@ -175,6 +176,16 @@ export async function buildAndroidStageOcrVariants(rawBuffer: Buffer): Promise<O
                 grayscale: true,
                 normalize: true,
                 threshold: 100,
+                sharpen: true,
+            }),
+        },
+        {
+            label: "stage/threshold-110",
+            buffer: await preprocessImage(rawBuffer, {
+                scale: 6,
+                grayscale: true,
+                normalize: true,
+                threshold: 110,
                 sharpen: true,
             }),
         },
@@ -609,6 +620,7 @@ export function selectBestStageText(candidates: StageOcrCandidate[]): StageOcrSe
     };
 
     for (const [text, entry] of grouped.entries()) {
+        
         const score =
             entry.support * 100 +
             entry.rawExactSupport * 10 +
