@@ -1,3 +1,12 @@
+/**
+ * Regression coverage — Android OCR (opening, augment, shop, board stages)
+ *
+ * - Tests below validate recognition on all real-device crops in
+ *   `examples/recordings/derived/android-real-recording-20260315-ionia/crops/`
+ * - Known edge: Shop-open 5-1 (`recording-shop-5-1-stage-raw.png`) occasionally fails due to difficult font/background, all others pass as of Mar 2026
+ * - If adding new OCR/correction logic or new fixtures, update regression docblocks in OcrService.ts & RecognitionUtils.ts
+ *   and ensure all edge/failure cases are clearly called out here and in code
+ */
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
