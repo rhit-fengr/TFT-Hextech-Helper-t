@@ -16,11 +16,34 @@ import { windowHelper, type WindowInfo } from "./utils/WindowHelper";
 import { Region } from "@nut-tree-fork/nut-js";
 import path from "path";
 import fs from "fs-extra";
-import sharp from "sharp";
-import cv from "@techstark/opencv-js";
+// import sharp from "sharp";
+import type * as OpencvType from "@techstark/opencv-js";
+import { getMatChannels, resizeOpenCvMat } from "./tft/recognition/OpenCvMatUtils";
+
+// Type alias for cv namespace usage in type annotations
+type CvMat = OpencvType.Mat;
+
+interface ShopInfoOptions {
+    templateFallback?: boolean;
+}
+
+interface AndroidGoldOcrCandidate {
+    text: string;
+    count: number;
+    region: string;
+}
+
+// Prefer a preinstalled global cv (set by electron preload during tests). If
+// absent, we'll dynamically import the heavy @techstark/opencv-js package at
+// runtime except when running the GUI verification harness (TFT_GUI_VERIFY=1)
+// where we must avoid loading the wasm to prevent test-time crashes.
+let cv: typeof OpencvType | undefined = (globalThis as unknown as Record<string, unknown>)["cv"] as
+    | typeof OpencvType
+    | undefined;
 
 // 协议层导入
 import {
+    androidHudBottomGoldTextRegion,
     androidHudGoldTextRegion,
     androidHudXpTextRegion,
     androidScoreboardRegion,
@@ -93,6 +116,7 @@ import {
     normalizePlayerNameOcrText,
     ocrService,
     OcrWorkerType,
+    parseAndroidStageVisualFromFrame,
     resolveChampionNameFromText,
     selectBestPlayerNameCandidate,
     selectBestStageText,
@@ -105,6 +129,7 @@ import {
     isValidStageFormat,
 } from "./tft";
 import { settingsStore, GameClient } from "./utils/SettingsStore";
+import { tftDataService } from "./services/TftDataService";
 import type {
     IdentifiedEquip,
     BenchUnit,
@@ -115,13 +140,29 @@ import type {
     LootOrb,
 } from "./tft";
 import { sleep } from "./utils/HelperTools";
+import { memoryMonitor } from "./utils/MemoryMonitor";
 
-let electronScreenPromise: Promise<any | null> | null = null;
+interface ElectronScreen {
+    getPrimaryDisplay(): {
+        scaleFactor: number;
+        size: { width: number; height: number };
+    };
+}
 
-async function getElectronScreen(): Promise<any | null> {
+interface ElectronModule {
+    screen?: ElectronScreen;
+    default?: { screen?: ElectronScreen };
+}
+
+let electronScreenPromise: Promise<ElectronScreen | null> | null = null;
+
+async function getElectronScreen(): Promise<ElectronScreen | null> {
     if (!electronScreenPromise) {
         electronScreenPromise = import("electron")
-            .then((module) => module.screen ?? (module as any).default?.screen ?? null)
+            .then((module) => {
+                const mod = module as ElectronModule;
+                return mod.screen ?? mod.default?.screen ?? null;
+            })
             .catch(() => null);
     }
 
@@ -206,11 +247,55 @@ class TftOperator {
      */
     private getActiveChessData(): Record<string, TFTUnit> {
         const mode = settingsStore.get('tftMode') as TFTMode || TFTMode.NORMAL;
-        this.currentChessData = getChessDataForMode(mode);
+        const baseChessData = getChessDataForMode(mode);
+        const gameClient = settingsStore.get('gameClient') as GameClient;
+
+        if (gameClient !== GameClient.ANDROID || mode === TFTMode.S4_RUISHOU) {
+            this.currentChessData = baseChessData;
+            return this.currentChessData;
+        }
+
+        this.currentChessData = {
+            ...baseChessData,
+            ...this.getAndroidSnapshotChessData(),
+        };
         return this.currentChessData;
     }
 
+    private getAndroidSnapshotChessData(): Record<string, TFTUnit> {
+        try {
+            const snapshot = tftDataService.getSnapshot();
+            const result: Record<string, TFTUnit> = {};
+
+            for (const champion of snapshot.champions) {
+                const displayName = champion.name?.trim();
+                if (!displayName) {
+                    continue;
+                }
+
+                result[displayName] = {
+                    displayName,
+                    englishId: champion.englishId ?? champion.id,
+                    price: champion.cost,
+                    traits: champion.traits ?? [],
+                    origins: champion.traits ?? [],
+                    classes: [],
+                    attackRange: champion.attackRange ?? 1,
+                };
+            }
+
+            return result;
+        } catch (error: unknown) {
+            logger.warn(
+                `[TftOperator] 安卓动态棋子数据读取失败，回退静态表: ` +
+                `${error instanceof Error ? error.message : String(error)}`
+            );
+            return {};
+        }
+    }
+
     private canUseOpenCvNow(): boolean {
+        if (!cv) return false;
         try {
             const probe = new cv.Mat(1, 1, cv.CV_8UC1);
             probe.delete();
@@ -331,7 +416,17 @@ class TftOperator {
     private readonly benchEmptyDiffThreshold = 6;
 
     /** OpenCV 是否已初始化 */
-    private isOpenCVReady = false;
+    private _isOpenCVReady = false;
+
+    /** Getter for isOpenCVReady - tracks if OpenCV is initialized */
+    public get isOpenCVReady(): boolean {
+        return this._isOpenCVReady;
+    }
+
+    /** Setter for isOpenCVReady */
+    public set isOpenCVReady(value: boolean) {
+        this._isOpenCVReady = value;
+    }
 
     /** 
      * 上一次随机走位的方向
@@ -344,17 +439,18 @@ class TftOperator {
     // ========== 路径 Getter ==========
 
 
-    private get failChampionTemplatePath(): string {
-        return path.join(process.env.VITE_PUBLIC || ".", "resources/assets/images/英雄备份");
-    }
+    // TODO: uncomment when champion template saving is implemented
+    // private get failChampionTemplatePath(): string {
+    //     return path.join(process.env.VITE_PUBLIC || ".", "resources/assets/images/英雄备份");
+    // }
 
-    private get equipTemplatePath(): string {
-        return path.join(process.env.VITE_PUBLIC || ".", "resources/assets/images/equipment");
-    }
+    // private get equipTemplatePath(): string {
+    //     return path.join(process.env.VITE_PUBLIC || ".", "resources/assets/images/equipment");
+    // }
 
-    private get starLevelTemplatePath(): string {
-        return path.join(process.env.VITE_PUBLIC || ".", "resources/assets/images/starLevel");
-    }
+    // private get starLevelTemplatePath(): string {
+    //     return path.join(process.env.VITE_PUBLIC || ".", "resources/assets/images/starLevel");
+    // }
 
     private get benchSlotSnapshotPath(): string {
         return path.join(process.env.VITE_PUBLIC || ".", "resources/assets/images/benchSlot");
@@ -378,7 +474,47 @@ class TftOperator {
      * @description 在 OpenCV WASM 加载完成后初始化模板加载器
      */
     private initOpenCV(): void {
-        const runtime = cv as typeof cv & { onRuntimeInitialized?: () => void };
+        // If a global stub is present (preload), use it immediately.
+        if ((globalThis as unknown as Record<string, unknown>)["cv"]) {
+            cv = (globalThis as unknown as Record<string, unknown>)["cv"] as typeof OpencvType;
+            this.setupOpenCvRuntime();
+            return;
+        }
+
+        // In GUI verification/test runs we must avoid importing the real
+        // opencv-js package because it triggers WASM fetch/instantiate that
+        // crashes in headless renderer contexts. The preload provides a stub
+        // for tests instead.
+        if (process.env.TFT_GUI_VERIFY === "1") {
+            logger.info("[TftOperator] GUI verify mode: skipping dynamic import of @techstark/opencv-js");
+            return;
+        }
+
+        // Otherwise, perform a dynamic import so the module is only loaded when
+        // actually needed at runtime (keeps dev/test harness stable).
+        // 采样 OpenCV 加载前的内存
+        memoryMonitor.sample("tft:opencv_before");
+
+        void import("@techstark/opencv-js")
+            .then((mod) => {
+                // support both ESM default and CJS shapes
+                 
+                cv = ((mod as any).default ?? mod) as typeof OpencvType;
+                this.setupOpenCvRuntime();
+                // 采样 OpenCV 加载后的内存
+                memoryMonitor.sample("tft:opencv_after");
+            })
+            .catch((e) => {
+                logger.warn(`[TftOperator] 动态导入 OpenCV 失败：${e?.toString?.() ?? e}`);
+            });
+    }
+
+    private setupOpenCvRuntime(): void {
+        if (!cv) {
+            return;
+        }
+
+        const runtime = cv as unknown as { onRuntimeInitialized?: () => void };
         const previous = runtime.onRuntimeInitialized;
         runtime.onRuntimeInitialized = () => {
             previous?.();
@@ -689,15 +825,90 @@ class TftOperator {
     }
 
     /**
+     * 安卓 AutoV1 安全观察用的轻量阶段读取。
+     * 只读取顶部少量小区域，要求至少两个 OCR 候选一致；不走旧的多窗口兜底和历史确认，
+     * 避免 live tick 被阶段 OCR 长时间占住。
+     */
+    public async getAndroidGameStageFast(): Promise<GameStageResult> {
+        await this.ensureInitialized();
+
+        const gameClient = settingsStore.get('gameClient') as GameClient;
+        if (gameClient !== GameClient.ANDROID) {
+            return this.getGameStage();
+        }
+
+        try {
+            const attempts = [
+                { label: "normal", region: this.getStageAbsoluteRegion(false, false) },
+                { label: "shop-open", region: this.getStageAbsoluteRegion(false, true) },
+                {
+                    label: "tight",
+                    region: screenCapture.toAbsoluteRegion({
+                        leftTop: { x: 0.321, y: 0.00 },
+                        rightBottom: { x: 0.411, y: 0.055 },
+                    }),
+                },
+            ];
+            const candidates: Array<{ text: string; rawText: string; label: string }> = [];
+
+            for (const attempt of attempts) {
+                const rawPng = await screenCapture.captureRegionAsPng(attempt.region, false);
+                const rawText = await ocrService.recognize(rawPng, OcrWorkerType.GAME_STAGE);
+                const extracted = this.extractLikelyStageText(rawText);
+                if (!extracted || !isValidStageFormat(extracted) || !this.isReasonableStage(extracted)) {
+                    continue;
+                }
+                candidates.push({
+                    text: extracted,
+                    rawText,
+                    label: `${attempt.label}/raw`,
+                });
+            }
+
+            const selection = selectBestStageText(candidates);
+            if (!selection.text || selection.support < 2) {
+                if (selection.text) {
+                    logger.debug(`[TftOperator] 安卓快速阶段候选支持不足: ${selection.text} support=${selection.support}`);
+                }
+                const framePng = await screenCapture.captureGameRegionAsPng({
+                    leftTop: { x: 0, y: 0 },
+                    rightBottom: { x: 1, y: 1 },
+                }, false);
+                const visualStage = await parseAndroidStageVisualFromFrame(framePng);
+                if (visualStage && isValidStageFormat(visualStage) && this.isReasonableStage(visualStage)) {
+                    const visualStageType = parseStageStringToEnum(visualStage);
+                    if (visualStageType !== GameStageType.UNKNOWN) {
+                        logger.debug(`[TftOperator] 安卓快速阶段视觉兜底命中: ${visualStage}`);
+                        return { type: visualStageType, stageText: visualStage };
+                    }
+                }
+                return { type: GameStageType.UNKNOWN, stageText: "" };
+            }
+
+            const stageType = parseStageStringToEnum(selection.text);
+            if (stageType === GameStageType.UNKNOWN) {
+                return { type: GameStageType.UNKNOWN, stageText: "" };
+            }
+
+            logger.debug(`[TftOperator] 安卓快速阶段识别命中: ${selection.text} support=${selection.support}`);
+            return { type: stageType, stageText: selection.text };
+        } catch (error: unknown) {
+            logger.warn(`[TftOperator] 安卓快速阶段识别异常: ${error instanceof Error ? error.message : String(error)}`);
+            return { type: GameStageType.UNKNOWN, stageText: "" };
+        }
+    }
+
+    /**
      * 获取当前商店的所有棋子信息
      * @description 扫描商店 5 个槽位，通过 OCR + 模板匹配识别棋子
      * @returns 商店中的棋子数组 (空槽位为 null)
      */
-    public async getShopInfo(): Promise<(TFTUnit | null)[]> {
+    public async getShopInfo(options: ShopInfoOptions = {}): Promise<(TFTUnit | null)[]> {
         logger.info("[TftOperator] 正在扫描商店中的 5 个槽位...");
         const shopUnits: (TFTUnit | null)[] = [];
         // 获取当前赛季对应的棋子数据集
         const chessData = this.getActiveChessData();
+        const useTemplateFallback = options.templateFallback ?? true;
 
         for (let i = 1; i <= 5; i++) {
             const slotKey = `SLOT_${i}` as keyof typeof shopSlotNameRegions;
@@ -706,7 +917,8 @@ class TftOperator {
                 region,
                 chessData,
                 "SHOP",
-                `商店槽位 ${i}`
+                `商店槽位 ${i}`,
+                useTemplateFallback
             );
             const cleanName = recognition.cleanName;
             const tftUnit = recognition.unit;
@@ -748,7 +960,7 @@ class TftOperator {
         for (const [slotName, regionDef] of Object.entries(activeEquipmentRegions)) {
             const targetRegion = screenCapture.toAbsoluteRegion(regionDef);
 
-            let targetMat: cv.Mat | null = null;
+            let targetMat: CvMat | null = null;
 
             try {
                 targetMat = await screenCapture.captureRegionAsMat(targetRegion);
@@ -810,7 +1022,7 @@ class TftOperator {
             // 将相对坐标转换为屏幕绝对坐标
             const targetRegion = screenCapture.toAbsoluteRegion(regionDef);
 
-            let targetMat: cv.Mat | null = null;
+            let targetMat: CvMat | null = null;
 
             try {
                 // 截取装备槽位区域的图像
@@ -867,8 +1079,10 @@ class TftOperator {
         // 截图并转为灰度图
         const processedPng = await screenCapture.captureRegionAsPng(region, false);
         const mat = await screenCapture.pngBufferToMat(processedPng);
-        if (mat.channels() > 1) {
-            cv.cvtColor(mat, mat, cv.COLOR_RGBA2GRAY);
+        if (getMatChannels(mat) > 1) {
+            if (cv) {
+                cv.cvtColor(mat, mat, cv.COLOR_RGBA2GRAY);
+            }
         }
 
         // matchChampion 内部会先检测空槽，空槽返回 "empty"
@@ -1286,25 +1500,37 @@ class TftOperator {
      * @param tmpl 空槽模板 (RGBA 格式的 cv.Mat)
      * @returns 平均像素差值 (RGB 三通道均值)
      */
-    private async calculateSlotDifference(region: Region, tmpl: cv.Mat): Promise<number> {
+    private async calculateSlotDifference(region: Region, tmpl: CvMat): Promise<number> {
         // 截取当前槽位 1x 原图 (RGBA)
         const pngBuffer = await screenCapture.captureRegionAsPng(region, false);
         let mat = await screenCapture.pngBufferToMat(pngBuffer);
 
         // 确保通道数一致：都转为 RGBA
-        if (mat.channels() === 3) {
-            cv.cvtColor(mat, mat, cv.COLOR_RGB2RGBA);
+        if (getMatChannels(mat) === 3) {
+            if (cv) {
+                cv.cvtColor(mat, mat, cv.COLOR_RGB2RGBA);
+            }
         }
 
         // 尺寸对齐：如果当前图尺寸与模板不同，按模板尺寸缩放
         if (mat.cols !== tmpl.cols || mat.rows !== tmpl.rows) {
-            const resized = new cv.Mat();
-            cv.resize(mat, resized, new cv.Size(tmpl.cols, tmpl.rows), 0, 0, cv.INTER_AREA);
-            mat.delete();
-            mat = resized;
+            if (cv) {
+                const resized = new cv.Mat();
+                if (!resizeOpenCvMat(cv, mat, resized, tmpl.cols, tmpl.rows, cv.INTER_AREA)) {
+                    resized.delete();
+                    mat.delete();
+                    return 255;
+                }
+                mat.delete();
+                mat = resized;
+            }
         }
 
         // 计算绝对差值并求均值 (RGBA 四通道取平均)
+        if (!cv) {
+            mat.delete();
+            return 0;
+        }
         const diff = new cv.Mat();
         cv.absdiff(mat, tmpl, diff);
         const meanScalar = cv.mean(diff); // [R_mean, G_mean, B_mean, A_mean]
@@ -1599,7 +1825,8 @@ class TftOperator {
         region: Region,
         chessData: Record<string, TFTUnit>,
         profile: "SHOP" | "DETAIL",
-        label: string
+        label: string,
+        useTemplateFallback: boolean = true
     ): Promise<{ unit: TFTUnit | null; cleanName: string; source: "OCR" | "TEMPLATE" | "NONE" }> {
         const rawPng = await screenCapture.captureRegionAsPng(region, false);
         const variants = await buildChampionOcrVariants(rawPng, profile);
@@ -1628,13 +1855,15 @@ class TftOperator {
             }
         }
 
-        if (templateLoader.isReady()) {
+        if (useTemplateFallback && templateLoader.isReady()) {
             const templateBuffer = variants.find((variant) => variant.label.includes("gray"))?.buffer ?? rawPng;
             const mat = await screenCapture.pngBufferToMat(templateBuffer);
 
             try {
-                if (mat.channels() > 1) {
-                    cv.cvtColor(mat, mat, cv.COLOR_RGBA2GRAY);
+                if (getMatChannels(mat) > 1) {
+                    if (cv) {
+                        cv.cvtColor(mat, mat, cv.COLOR_RGBA2GRAY);
+                    }
                 }
 
                 const templateMatch = templateMatcher.matchChampionDetailed(mat);
@@ -1814,31 +2043,100 @@ class TftOperator {
     }
 
     /**
-     * 连续确认机制：防止OCR误读（例如把1-1误识别怇2-1/3-1）
+     * 标准化阶段文本，处理OCR常见误读
+     * @param stageText 原始OCR文本
+     * @returns 标准化后的阶段文本，无法识别返回null
+     * 
+     * 处理的误读场景：
+     * - '8' 误读为 '3'（如 3-1 应为 8-1）
+     * - '6' 误读为 '0'（如 0-2 应为 6-2）
+     * - 空格/换行干扰
+     * - '1' 误读为 'l' 或 'I'
+     */
+    private normalizeStageText(stageText: string): string | null {
+        // 去除空白字符
+        const cleaned = stageText.replace(/\s+/g, '').trim();
+        
+        // 基本格式校验: X-Y
+        const match = cleaned.match(/^(\d)[-.](\d)$/);
+        if (!match) return null;
+
+        let stage = parseInt(match[1]);
+        let round = parseInt(match[2]);
+
+        // 常见误读修正
+        // stage 0 不合法，通常是 6 的误读
+        if (stage === 0) stage = 6;
+        
+        // round 0 不合法，通常是 6 的误读
+        if (round === 0) round = 6;
+
+        // 第一阶段最多4回合
+        if (stage === 1 && round > 4) return null;
+
+        // TFT最多7个大阶段，每个阶段最多7个回合
+        if (stage < 1 || stage > 7 || round < 1 || round > 7) {
+            return null;
+        }
+
+        return `${stage}-${round}`;
+    }
+
+    /**
+     * 连续确认机制：使用多数投票防止OCR误读
      * @param stageText 识别到的阶段文本
      * @returns 确认后的阶段文本，如果不稳定则返回null
+     * 
+     * 投票规则：
+     * - 从历史中取最近 STAGE_CONFIRM_THRESHOLD 条记录
+     * - 统计每个阶段文本出现的次数
+     * - 若最高票数 >= 2 且占比 >= 50%，则确认为该阶段
+     * - 否则返回 null（不稳定）
      */
     private confirmStageWithHistory(stageText: string): string | null {
-        // 添加到历史
-        this.stageRecognitionHistory.push(stageText);
+        const normalized = this.normalizeStageText(stageText);
+        if (!normalized) {
+            logger.debug(`[TftOperator] 阶段文本无法标准化: "${stageText}"`);
+            return null;
+        }
+
+        // 添加标准化后的结果到历史
+        this.stageRecognitionHistory.push(normalized);
 
         // 保持历史长度
         if (this.stageRecognitionHistory.length > this.MAX_HISTORY_LENGTH) {
             this.stageRecognitionHistory.shift();
         }
 
-        // 检查最近 STAGE_CONFIRM_THRESHOLD 次识别是否相同
+        // 数据不足，暂不确认
         if (this.stageRecognitionHistory.length < this.STAGE_CONFIRM_THRESHOLD) {
             logger.debug(`[TftOperator] 阶段确认中... (剩余${this.STAGE_CONFIRM_THRESHOLD - this.stageRecognitionHistory.length}次)`);
-            return null; // 数据不足，暂不确认
+            return null;
         }
 
         const recentResults = this.stageRecognitionHistory.slice(-this.STAGE_CONFIRM_THRESHOLD);
-        const allSame = recentResults.every(s => s === recentResults[0]);
+        
+        // 多数投票：统计每个值的出现次数
+        const voteCounts = new Map<string, number>();
+        for (const s of recentResults) {
+            voteCounts.set(s, (voteCounts.get(s) || 0) + 1);
+        }
 
-        if (allSame) {
-            logger.info(`[TftOperator] ✅ 阶段确认成功: ${recentResults[0]}`);
-            return recentResults[0];
+        // 找出最高票数
+        let maxVotes = 0;
+        let majorityStage: string | null = null;
+        for (const [stage, count] of voteCounts) {
+            if (count > maxVotes) {
+                maxVotes = count;
+                majorityStage = stage;
+            }
+        }
+
+        // 多数投票阈值：最高票数 >= 2 且占比 >= 50%
+        const threshold = Math.max(2, Math.ceil(this.STAGE_CONFIRM_THRESHOLD / 2));
+        if (maxVotes >= threshold) {
+            logger.info(`[TftOperator] ✅ 阶段确认成功 (投票${maxVotes}/${this.STAGE_CONFIRM_THRESHOLD}): ${majorityStage}`);
+            return majorityStage;
         }
 
         // 识别结果不稳定
@@ -1956,30 +2254,30 @@ class TftOperator {
      * @param mat OpenCV Mat 对象
      * @param channels 通道数
      */
-    private async saveFailedImage(
-        type: string,
-        slot: string,
-        mat: cv.Mat,
-        channels: 3 | 4
-    ): Promise<void> {
-        try {
-            const fileName = `${type}_${slot}_${Date.now()}.png`;
-            const pngBuffer = await sharp(mat.data, {
-                raw: {
-                    width: mat.cols,
-                    height: mat.rows,
-                    channels,
-                },
-            })
-                .png()
-                .toBuffer();
-
-            fs.writeFileSync(path.join(this.equipTemplatePath, fileName), pngBuffer);
-            logger.info(`[TftOperator] 已保存失败样本: ${fileName}`);
-        } catch (e) {
-            logger.error(`[TftOperator] 保存失败样本出错: ${e}`);
-        }
-    }
+    // private async saveFailedImage(
+    //     type: string,
+    //     slot: string,
+    //     mat: CvMat,
+    //     channels: 3 | 4
+    // ): Promise<void> {
+    //     try {
+    //         const fileName = `${type}_${slot}_${Date.now()}.png`;
+    //         const pngBuffer = await sharp(mat.data, {
+    //             raw: {
+    //                 width: mat.cols,
+    //                 height: mat.rows,
+    //                 channels,
+    //             },
+    //         })
+    //             .png()
+    //             .toBuffer();
+    //
+    //         fs.writeFileSync(path.join(this.equipTemplatePath, fileName), pngBuffer);
+    //         logger.info(`[TftOperator] 已保存失败样本: ${fileName}`);
+    //     } catch (e) {
+    //         logger.error(`[TftOperator] 保存失败样本出错: ${e}`);
+    //     }
+    // }
 
     /**
      * 获取当前等级信息
@@ -2066,8 +2364,8 @@ class TftOperator {
      */
     private tryFixMisrecognizedXp(text: string): { level: number; currentXp: number; totalXp: number } | null {
         // TFT 各等级升级所需经验（totalXp 的所有合法值）
-        // 等级3=2, 等级4=6, 等级5=10, 等级6=20, 等级7=36, 等级8=60, 等级9=68, 等级10=68
-        const VALID_TOTAL_XP = new Set([2, 6, 10, 20, 36, 60, 68]);
+        // 等级3=2, 等级4=6, 等级5=10/18/20, 等级7=36, 等级8=60, 等级9=68, 等级10=68
+        const VALID_TOTAL_XP = new Set([2, 6, 10, 18, 20, 36, 60, 68]);
         
         // "/" 可能被误识别的字符（斜杠形状类似 1、7，有时也会识别成 0）
         const SLASH_MISRECOGNIZED_CHARS = ['1', '7', '0'];
@@ -2179,9 +2477,9 @@ class TftOperator {
             const gameClient = settingsStore.get('gameClient') as GameClient;
             if (gameClient === GameClient.ANDROID) {
                 const androidGold = await this.getAndroidCoinCount();
-                if (androidGold !== null) {
-                    return androidGold;
-                }
+                // 安卓 dry-run / live observe 必须保持非破坏性。旧的 PC 兜底会点击海克斯和商店槽位，
+                // 金币 OCR 失败时可能误买棋子；安卓端宁可返回 null，由上层进入 WAIT/PAUSE。
+                return androidGold;
             }
 
             // 1. 计算金币区域的绝对坐标
@@ -2232,14 +2530,46 @@ class TftOperator {
     }
 
     private async getAndroidCoinCount(): Promise<number | null> {
-        const absoluteRegion = screenCapture.toAbsoluteRegion(androidHudGoldTextRegion);
+        const topHudCandidates = await this.readAndroidGoldCandidates("top-hud", androidHudGoldTextRegion);
+        const bottomBadgeCandidates = await this.readAndroidGoldCandidates(
+            "bottom-badge",
+            androidHudBottomGoldTextRegion
+        );
+
+        const bottomBest = bottomBadgeCandidates.find((candidate) => candidate.count >= 2);
+        const topBest = topHudCandidates[0];
+        const best = bottomBest ?? topBest ?? bottomBadgeCandidates[0];
+
+        if (!best) {
+            return null;
+        }
+
+        const coinCount = parseInt(best.text, 10);
+        if (!Number.isFinite(coinCount)) {
+            return null;
+        }
+
+        logger.info(`[TftOperator] 安卓金币识别成功: ${coinCount} (${best.region}, support=${best.count})`);
+        return coinCount;
+    }
+
+    private async readAndroidGoldCandidates(
+        label: string,
+        region: typeof androidHudGoldTextRegion
+    ): Promise<AndroidGoldOcrCandidate[]> {
+        const absoluteRegion = screenCapture.toAbsoluteRegion(region);
         const rawPng = await screenCapture.captureRegionAsPng(absoluteRegion, false);
         const variants = await buildAndroidHudDigitVariants(rawPng);
         const candidates: string[] = [];
 
         for (const variant of variants) {
             const rawText = await ocrService.recognize(variant.buffer, OcrWorkerType.HUD_DIGITS);
-            const normalizedText = extractLikelyHudNumber(rawText, { min: 0, max: 99, maxDigits: 2 });
+            const normalizedText = extractLikelyHudNumber(rawText, {
+                min: 0,
+                max: 200,
+                maxDigits: 3,
+                preferSuffix: true,
+            });
             if (normalizedText) {
                 candidates.push(normalizedText);
             }
@@ -2252,19 +2582,9 @@ class TftOperator {
 
         const best = [...grouped.entries()]
             .sort((left, right) => right[1] - left[1])
-            .map(([text]) => text)[0];
+            .map(([text, count]) => ({ text, count, region: label }));
 
-        if (!best) {
-            return null;
-        }
-
-        const coinCount = parseInt(best, 10);
-        if (!Number.isFinite(coinCount)) {
-            return null;
-        }
-
-        logger.info(`[TftOperator] 安卓金币识别成功: ${coinCount}`);
-        return coinCount;
+        return best;
     }
 
     public async getSelfHp(): Promise<number | null> {

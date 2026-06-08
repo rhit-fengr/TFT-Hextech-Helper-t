@@ -30,6 +30,7 @@ import {
 } from "../tft";
 import { templateLoader } from "../tft/recognition/TemplateLoader";
 import { templateMatcher } from "../tft/recognition/TemplateMatcher";
+import { getMatChannels, resizeOpenCvMat } from "../tft/recognition/OpenCvMatUtils";
 import type {
     AndroidRecognitionChampionFixture,
     AndroidRecognitionChampionResult,
@@ -46,6 +47,7 @@ import type {
     RecognitionSource,
 } from "./RecognitionReplayTypes";
 import type { BenchUnit, BoardUnit } from "../tft";
+import { GameClient } from "../utils/SettingsStore";
 
 interface RecognitionFixtureFile {
     id?: string;
@@ -243,7 +245,7 @@ async function recognizeChampionFromImage(
     const mat = await screenCapture.pngBufferToMat(templateBuffer);
 
     try {
-        if (mat.channels() > 1) {
+        if (getMatChannels(mat) > 1) {
             cv.cvtColor(mat, mat, cv.COLOR_RGBA2GRAY);
         }
 
@@ -396,15 +398,19 @@ async function calculateSlotDifference(
     let mat = await screenCapture.pngBufferToMat(cropBuffer);
 
     try {
-        if (mat.channels() === 3) {
+        const channels = getMatChannels(mat);
+        if (channels === 3) {
             cv.cvtColor(mat, mat, cv.COLOR_RGB2RGBA);
-        } else if (mat.channels() === 1) {
+        } else if (channels === 1) {
             cv.cvtColor(mat, mat, cv.COLOR_GRAY2RGBA);
         }
 
         if (mat.cols !== templateMat.cols || mat.rows !== templateMat.rows) {
             const resized = new cv.Mat();
-            cv.resize(mat, resized, new cv.Size(templateMat.cols, templateMat.rows), 0, 0, cv.INTER_AREA);
+            if (!resizeOpenCvMat(cv, mat, resized, templateMat.cols, templateMat.rows, cv.INTER_AREA)) {
+                resized.delete();
+                return 255;
+            }
             mat.delete();
             mat = resized;
         }
@@ -514,9 +520,10 @@ async function evaluateEquipmentResults(
         const mat = await screenCapture.pngBufferToMat(cropBuffer);
 
         try {
-            if (mat.channels() === 4) {
+            const channels = getMatChannels(mat);
+            if (channels === 4) {
                 cv.cvtColor(mat, mat, cv.COLOR_RGBA2RGB);
-            } else if (mat.channels() === 1) {
+            } else if (channels === 1) {
                 cv.cvtColor(mat, mat, cv.COLOR_GRAY2RGB);
             }
 
@@ -734,7 +741,7 @@ function evaluateTraitResultsFromUnits(
     const boardUnits = buildBoardUnitsFromFixture(mode, snapshot.boardUnits);
     const benchUnits = buildBenchUnitsFromFixture(mode, snapshot.benchUnits);
     const normalizedState = normalizeRuntimeState({
-        client: "ANDROID" as any,
+        client: GameClient.ANDROID,
         target: "ANDROID_EMULATOR",
         mode,
         level: 1,

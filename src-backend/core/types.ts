@@ -11,6 +11,7 @@ export type ActionType =
     | "MOVE"
     | "EQUIP"
     | "PICK_AUGMENT"
+    | "PICK_LOOT"
     | "NOOP";
 
 export interface ObservedUnit {
@@ -78,10 +79,24 @@ export interface DecisionContext {
     conservativeEconomyFloor?: number;
     strategyPreset?: "STANDARD" | "FAST8" | "REROLL";
     stabilizeHpThreshold?: number;
+    allInPairThreshold?: number;
+    pairAllInStage?: number;
+    upgradeAllInExtraBudget?: number;
+    maxRollCount?: number;
 }
 
 export interface DecisionEngine {
     generatePlan(state: ObservedState, context?: DecisionContext): ActionPlan[];
+}
+
+/**
+ * Simple serializable strategy shape used for JSON import/export.
+ * planType corresponds to ActionType (BUY, SELL, etc.)
+ */
+export interface Strategy {
+    planType: ActionType;
+    priority: number;
+    reason: string;
 }
 
 export interface AdapterHealth {

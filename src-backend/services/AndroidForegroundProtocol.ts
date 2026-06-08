@@ -5,25 +5,42 @@ export type AndroidForegroundState =
     | "BLUESTACKS_BOOT"
     | "UPDATE_READY"
     | "LOGIN_REQUIRED"
+    | "NETWORK_ERROR"
     | "LOBBY"
+    | "MODE_SELECT"
+    | "CONFIRM_MODAL"
     | "QUEUE"
     | "ACCEPT_READY"
     | "IN_GAME_TRANSITION"
+    | "GAME_OVER"
     | "LIVE_CONTENT"
     | "UNKNOWN";
 
 export type AndroidForegroundVerification = "VERIFIED_REAL" | "REAL_CAPTURE_DRAFT" | "SYNTHETIC_PLACEHOLDER";
 export type AndroidForegroundSource = "SCREENSHOT_CLASSIFIER" | "SMOKE_FIXTURE";
-export type AndroidForegroundActionPointKey = "PRIMARY_CTA" | "START_QUEUE" | "ACCEPT_READY" | "CANCEL_QUEUE" | "DISMISS_OVERLAY";
+export type AndroidForegroundActionPointKey =
+    | "PRIMARY_CTA"
+    | "START_QUEUE"
+    | "SELECT_GAME_MODE"
+    | "CONFIRM_MODAL"
+    | "ACCEPT_READY"
+    | "GAME_OVER_EXIT"
+    | "CANCEL_QUEUE"
+    | "DISMISS_OVERLAY"
+    | "LEAVE_ROOM";
 export type AndroidForegroundDecisionKind =
     | "WAIT"
     | "BLOCKED"
     | "READY"
     | "TAP_PRIMARY_CTA"
+    | "TAP_SELECT_GAME_MODE"
+    | "TAP_CONFIRM_MODAL"
     | "TAP_START_QUEUE"
     | "TAP_ACCEPT_READY"
+    | "TAP_GAME_OVER_EXIT"
     | "TAP_CANCEL_QUEUE"
-    | "TAP_DISMISS_OVERLAY";
+    | "TAP_DISMISS_OVERLAY"
+    | "TAP_LEAVE_ROOM";
 
 export interface AndroidForegroundObservation {
     state: AndroidForegroundState;
@@ -101,6 +118,31 @@ export function normalizeAndroidForegroundObservation(
         };
     }
 
+    if (classification.augmentChoiceVisible) {
+        return {
+            state: "LIVE_CONTENT",
+            verification: "VERIFIED_REAL",
+            source: "SCREENSHOT_CLASSIFIER",
+            reason: "Live augment or encounter choice overlay detected",
+            anchors: ["augment-choice-overlay"],
+            rawClassification: classification,
+        };
+    }
+
+    if (classification.state === "GAME_OVER") {
+        return {
+            state: "GAME_OVER",
+            verification: "VERIFIED_REAL",
+            source: "SCREENSHOT_CLASSIFIER",
+            reason: "Game-over or placement result screen detected; exit before starting the next normal-match queue",
+            anchors: ["game-over-result", "placement-exit-cta"],
+            actionPoints: classification.gameOverExitPoint
+                ? { GAME_OVER_EXIT: { ...classification.gameOverExitPoint } }
+                : undefined,
+            rawClassification: classification,
+        };
+    }
+
     if (classification.state === "ACCEPT_READY") {
         return {
             state: "ACCEPT_READY",
@@ -131,13 +173,33 @@ export function normalizeAndroidForegroundObservation(
 
     if (classification.state === "LOBBY") {
         if (classification.dismissOverlayPoint) {
+            const isSettingsOverlay = classification.lobbyVariant === "SETTINGS_OPEN";
             return {
                 state: "LOBBY",
                 verification: "VERIFIED_REAL",
                 source: "SCREENSHOT_CLASSIFIER",
-                reason: "Lobby detected with side menu open; recover by dismissing the overlay before queueing",
-                anchors: ["side-menu-overlay", "lobby-backdrop"],
+                reason: isSettingsOverlay
+                    ? "Settings panel detected; recover by dismissing the overlay before queueing"
+                    : "Lobby detected with side menu open; recover by dismissing the overlay before queueing",
+                anchors: isSettingsOverlay
+                    ? ["settings-panel", "lobby-backdrop"]
+                    : ["side-menu-overlay", "lobby-backdrop"],
                 actionPoints: { DISMISS_OVERLAY: { ...classification.dismissOverlayPoint } },
+                rawClassification: classification,
+            };
+        }
+
+        if (classification.lobbyVariant === "ROOM") {
+            return {
+                state: "LOBBY",
+                verification: "VERIFIED_REAL",
+                source: "SCREENSHOT_CLASSIFIER",
+                reason: "Lobby room detected from room back button plus start-game CTA",
+                anchors: ["lobby-room", "room-back-cta", "start-queue-cta"],
+                actionPoints: {
+                    ...(classification.startQueuePoint ? { START_QUEUE: { ...classification.startQueuePoint } } : {}),
+                    ...(classification.leaveRoomPoint ? { LEAVE_ROOM: { ...classification.leaveRoomPoint } } : {}),
+                },
                 rawClassification: classification,
             };
         }
@@ -155,6 +217,41 @@ export function normalizeAndroidForegroundObservation(
         };
     }
 
+    if (classification.state === "MODE_SELECT") {
+        return {
+            state: "MODE_SELECT",
+            verification: "VERIFIED_REAL",
+            source: "SCREENSHOT_CLASSIFIER",
+            reason: "Mode-selection carousel detected after tapping start; select a TFT mode before queueing",
+            anchors: ["mode-card-carousel", "dimmed-lobby-backdrop"],
+            actionPoints: {
+                ...(classification.selectGameModePoint ? { SELECT_GAME_MODE: { ...classification.selectGameModePoint } } : {}),
+                ...(classification.startQueuePoint ? { START_QUEUE: { ...classification.startQueuePoint } } : {}),
+            },
+            rawClassification: classification,
+        };
+    }
+
+    if (classification.state === "CONFIRM_MODAL") {
+        const isNetworkErrorModal = classification.confirmModalVariant === "NETWORK_ERROR";
+        return {
+            state: "CONFIRM_MODAL",
+            verification: "VERIFIED_REAL",
+            source: "SCREENSHOT_CLASSIFIER",
+            reason: isNetworkErrorModal
+                ? "Network-error confirmation modal detected; dismiss it only after emulator network/account recovery"
+                : "Recoverable foreground confirmation modal detected; dismiss it before retrying queue",
+            anchors: isNetworkErrorModal
+                ? ["network-error-modal", "modal-confirm-cta"]
+                : ["foreground-confirm-modal", "modal-confirm-cta"],
+            actionPoints: classification.confirmModalPoint
+                ? { CONFIRM_MODAL: { ...classification.confirmModalPoint } }
+                : undefined,
+            rawClassification: classification,
+            note: isNetworkErrorModal ? "External network/account state may need manual recovery before automation can continue." : undefined,
+        };
+    }
+
     if (classification.state === "IN_GAME_TRANSITION") {
         return {
             state: "IN_GAME_TRANSITION",
@@ -167,6 +264,18 @@ export function normalizeAndroidForegroundObservation(
     }
 
     if (classification.state === "TFT_FRONTEND") {
+        if (classification.frontendVariant === "NETWORK_ERROR") {
+            return {
+                state: "NETWORK_ERROR",
+                verification: "VERIFIED_REAL",
+                source: "SCREENSHOT_CLASSIFIER",
+                reason: "Riot network or refresh-token error frontend detected; automation will not click retry blindly",
+                anchors: ["riot-error-page", "try-again-cta"],
+                rawClassification: classification,
+                note: "External Riot account/session or network recovery is required before normal-match training can continue.",
+            };
+        }
+
         if (classification.frontendVariant === "LOGIN_REQUIRED") {
             return {
                 state: "LOGIN_REQUIRED",

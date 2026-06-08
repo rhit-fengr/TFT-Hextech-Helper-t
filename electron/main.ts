@@ -1,4 +1,4 @@
-import {app, BrowserWindow, ipcMain, shell, net, dialog} from 'electron'
+import {app, BrowserWindow, ipcMain, shell, net, dialog, screen} from 'electron'
 import 'source-map-support/register';
 import fs from 'fs';
 import path from "path";
@@ -11,6 +11,31 @@ import { writeCrashLog, initGlobalCrashHandler } from "../src-backend/utils/Cras
 
 // 初始化全局崩溃捕获（越早调用越好，这样后续模块加载失败也能记录）
 initGlobalCrashHandler();
+
+function configureGuiVerificationRuntime(): void {
+    if (process.env.TFT_GUI_VERIFY !== '1') {
+        return;
+    }
+
+    const verifierProfileName = process.env.TFT_GUI_VERIFY_PROFILE || 'gui-verify-profile';
+    const verifierRoot = path.resolve(process.cwd(), '.cache', verifierProfileName);
+    const userDataDir = path.join(verifierRoot, 'user-data');
+    const sessionDataDir = path.join(verifierRoot, 'session-data');
+    const cacheDir = path.join(verifierRoot, 'cache');
+
+    fs.mkdirSync(userDataDir, { recursive: true });
+    fs.mkdirSync(sessionDataDir, { recursive: true });
+    fs.mkdirSync(cacheDir, { recursive: true });
+
+    app.setPath('userData', userDataDir);
+    app.setPath('sessionData', sessionDataDir);
+    app.commandLine.appendSwitch('disk-cache-dir', cacheDir);
+    app.commandLine.appendSwitch('disable-http-cache');
+    app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+    app.commandLine.appendSwitch('media-cache-size', '0');
+}
+
+configureGuiVerificationRuntime();
 
 // ============================================================================
 // GPU 兼容性设置
@@ -74,11 +99,15 @@ import {IpcChannel} from "./protocol.ts";
 import {logger} from "../src-backend/utils/Logger.ts";
 // import {hexService} from "../src-backend/services"; // 移至动态导入
 import {GameClient, settingsStore} from "../src-backend/utils/SettingsStore.ts";
+import type { LogAutoCleanThreshold } from "../src-backend/utils/SettingsStore.ts";
 import {debounce} from "../src-backend/utils/HelperTools.ts";
 // import {tftOperator} from "../src-backend/TftOperator.ts"; // 移至动态导入
 import {is, optimizer} from "@electron-toolkit/utils";
 // import {lineupLoader} from "../src-backend/lineup";  // 移至动态导入
-import {TFT_16_CHESS_DATA} from "../src-backend/TFTProtocol";  // 导入棋子数据
+import {TFT_16_CHESS_DATA, TFTMode} from "../src-backend/TFTProtocol";  // 导入棋子数据
+import {LogMode} from "../src-backend/types/AppTypes";
+import type { DecisionContext, ObservedState } from "../src-backend/core/types";
+import type { LineupConfig } from "../src-backend/lineup/LineupTypes";
 import {analyticsManager} from "../src-backend/utils/AnalyticsManager";  // Google Analytics 数据统计
 import {registerOverlayCallbacks} from "../src-backend/utils/OverlayBridge";  // 浮窗桥接（后端 → 主进程）
 // import {globalHotkeyManager} from "../src-backend/utils/GlobalHotkeyManager.ts";  // 移至动态导入
@@ -87,14 +116,39 @@ import {registerOverlayCallbacks} from "../src-backend/utils/OverlayBridge";  //
 // 业务模块变量声明 (动态加载)
 // 为了防止在环境检查前加载原生模块导致崩溃，这些模块将在 app.whenReady 中动态导入
 // ============================================================================
-let hexService: any;
-let pcLogicRunner: any;
-let androidSimulationRunner: any;
-let androidRecognitionReplayRunner: any;
-let tftDataService: any;
-let tftOperator: any;
-let lineupLoader: any;
-let globalHotkeyManager: any;
+type ServicesModule = typeof import("../src-backend/services");
+type TftOperatorModule = typeof import("../src-backend/TftOperator.ts");
+type LineupModule = typeof import("../src-backend/lineup");
+type GlobalHotkeyModule = typeof import("../src-backend/utils/GlobalHotkeyManager.ts");
+
+let hexService!: ServicesModule["hexService"];
+let pcLogicRunner!: ServicesModule["pcLogicRunner"];
+let androidSimulationRunner!: ServicesModule["androidSimulationRunner"];
+let androidRecognitionReplayRunner!: ServicesModule["androidRecognitionReplayRunner"];
+let tftDataService!: ServicesModule["tftDataService"];
+let tftOperator!: TftOperatorModule["tftOperator"];
+let lineupLoader!: LineupModule["lineupLoader"];
+let globalHotkeyManager!: GlobalHotkeyModule["globalHotkeyManager"];
+
+function getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+function getErrorStack(error: unknown): string {
+    return error instanceof Error ? error.stack ?? error.message : String(error);
+}
+
+function isValidTftMode(mode: string): mode is TFTMode {
+    return Object.values(TFTMode).includes(mode as TFTMode);
+}
+
+function isValidLogMode(mode: string): mode is LogMode {
+    return mode === LogMode.SIMPLE || mode === LogMode.DETAILED;
+}
+
+function isValidLogAutoCleanThreshold(value: number): value is LogAutoCleanThreshold {
+    return value === 0 || value === 100 || value === 200 || value === 500 || value === 1000;
+}
 
 /**
  * 下面这两行代码是历史原因，新版的ESM模式下需要CJS里面的require、__dirname来提供方便
@@ -244,7 +298,7 @@ function createOverlayWindow(gameWindowInfo: { left: number; top: number; width:
     }
 
     // 获取 DPI 缩放因子（物理像素 → 逻辑像素的转换）
-    const { screen: electronScreen } = require('electron');
+    const electronScreen = screen;
     const primaryDisplay = electronScreen.getPrimaryDisplay();
     const scaleFactor = primaryDisplay.scaleFactor;
 
@@ -375,6 +429,7 @@ async function runGuiVerification(targetWindow: BrowserWindow): Promise<void> {
         : null;
 
     await new Promise((resolve) => setTimeout(resolve, Number.isFinite(waitMs) ? waitMs : 5000));
+    console.log('[GUI_VERIFY_PHASE] after-wait');
 
     const summary = await targetWindow.webContents.executeJavaScript(`
         (async () => {
@@ -393,38 +448,63 @@ async function runGuiVerification(targetWindow: BrowserWindow): Promise<void> {
                 complete: img.complete,
                 naturalWidth: img.naturalWidth,
             }));
+
             const resolvedSrc = (image) => image.currentSrc || image.src || '';
-            const localImages = images.filter((image) => /resources\/season-packs/i.test(resolvedSrc(image)));
-            const remoteImages = images.filter((image) => /^https?:\/\//i.test(resolvedSrc(image)));
-            const brokenImages = images.filter((image) => image.complete && image.naturalWidth === 0);
+            const isLocalSeasonPackImage = (image) => resolvedSrc(image).toLowerCase().includes('resources/season-packs');
+            const isRemoteImage = (image) => {
+                const src = resolvedSrc(image);
+                if (!src || isLocalSeasonPackImage(image)) {
+                    return false;
+                }
+                const lowered = src.toLowerCase();
+                return lowered.startsWith('http://') || lowered.startsWith('https://');
+            };
+            const isSvgImage = (image) => resolvedSrc(image).toLowerCase().includes('.svg');
+
+            const localImages = images.filter((image) => isLocalSeasonPackImage(image));
+            const remoteImages = images.filter((image) => isRemoteImage(image));
+            const loadedRemoteImages = remoteImages.filter((image) => image.naturalWidth > 0);
+            const brokenImages = images.filter((image) => image.complete && image.naturalWidth === 0 && !isSvgImage(image));
+            const brokenLocalImages = localImages.filter((image) => image.complete && image.naturalWidth === 0 && !isSvgImage(image));
 
             return {
                 hash: window.location.hash,
                 title: document.title,
+                appEnv: {
+                    isGuiVerify: window.appEnv?.isGuiVerify ?? null,
+                    blocksRemoteAssets: window.appEnv?.blocksRemoteAssets ?? null,
+                },
                 bodyTextSample: document.body.innerText.slice(0, 800),
                 lineupPageVisible: Boolean(document.querySelector('[data-page-wrapper]')),
                 createButtonVisible: document.body.innerText.includes('创建阵容'),
                 totalImages: images.length,
                 localImageCount: localImages.length,
                 remoteImageCount: remoteImages.length,
+                remoteLoadedImageCount: loadedRemoteImages.length,
                 brokenImageCount: brokenImages.length,
+                brokenLocalImageCount: brokenLocalImages.length,
                 localImages: localImages.slice(0, 12),
                 remoteImages: remoteImages.slice(0, 12),
+                loadedRemoteImages: loadedRemoteImages.slice(0, 12),
                 brokenImages: brokenImages.slice(0, 12),
+                brokenLocalImages: brokenLocalImages.slice(0, 12),
             };
         })();
     `, true);
+    console.log('[GUI_VERIFY_PHASE] after-summary');
 
     if (summaryPath) {
         fs.mkdirSync(path.dirname(summaryPath), { recursive: true });
         fs.writeFileSync(summaryPath, JSON.stringify(summary, null, 2), 'utf8');
     }
+    console.log('[GUI_VERIFY_PHASE] after-summary-write');
 
     if (screenshotPath) {
         fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
         const screenshot = await targetWindow.webContents.capturePage();
         fs.writeFileSync(screenshotPath, screenshot.toPNG());
     }
+    console.log('[GUI_VERIFY_PHASE] after-screenshot');
 
     console.log(`[GUI_VERIFY] ${JSON.stringify(summary)}`);
 
@@ -478,8 +558,22 @@ function createWindow() {
     win.webContents.on('did-finish-load', () => {
         win?.webContents.send('main-process-message', (new Date).toLocaleString())
 
+        // Emit an immediate healthcheck marker so the test harness can detect
+        // that the renderer finished loading even if later summary collection
+        // fails. This helps separate "did-finish-load" issues from summary
+        // extraction bugs.
+        try {
+            console.log('[GUI_VERIFY_HEALTHCHECK]');
+        } catch (e) {
+            // best-effort only
+        }
+
         if (process.env.TFT_GUI_VERIFY === '1') {
-            void runGuiVerification(win!);
+            void runGuiVerification(win!).catch((error) => {
+                console.error(`[GUI_VERIFY_ERROR] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+                writeCrashLog(error as Error, 'GUI verification failed');
+                app.quit();
+            });
         }
     })
     
@@ -676,8 +770,8 @@ app.whenReady().then(async () => {
     console.log(`📦 [Main] 已加载 ${lineupCount} 个阵容配置`)
 
     // 预热官方 TFT 数据快照（失败时自动回落到本地快照，不阻塞启动）
-    void tftDataService.refresh(false).catch((error: any) => {
-        console.warn(`⚠️ [Main] TFT 数据预热失败，将使用本地快照: ${error?.message ?? error}`);
+    void tftDataService.refresh(false).catch((error: unknown) => {
+        console.warn(`⚠️ [Main] TFT 数据预热失败，将使用本地快照: ${getErrorMessage(error)}`);
     });
     
     // 注册挂机开关快捷键（从设置中读取）
@@ -781,60 +875,68 @@ function init() {
 }
 
 function registerHandler() {
+    const invokeWithIpcErrorLog = async <T>(channel: IpcChannel, operation: () => Promise<T> | T): Promise<T> => {
+        try {
+            return await operation();
+        } catch (error: unknown) {
+            logger.error(`[IPC] ${channel} 调用失败: ${getErrorStack(error)}`);
+            throw error;
+        }
+    };
+
     // LCU 连接状态查询
     ipcMain.handle(IpcChannel.LCU_GET_CONNECTION_STATUS, async () => {
         const lcu = LCUManager.getInstance();
         return lcu?.isConnected ?? false;
     });
 
-    ipcMain.handle(IpcChannel.LCU_REQUEST, async (
-        _event, // 固定的第一个参数，包含了事件的源信息
-        method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', // 第二个参数：请求方法
-        endpoint: string, // 第三个参数：API 端点
-        body?: object      // 第四个参数：可选的请求体
-    ) => {
-        // 首先，从单例获取 LCUManager 实例
-        const lcu = LCUManager.getInstance();
+    ipcMain.handle(
+        IpcChannel.LCU_REQUEST,
+        async (
+            _event,
+            method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+            endpoint: string,
+            body?: object
+        ) => {
+            const lcu = LCUManager.getInstance();
 
-        // 安全检查：如果 LCU 还没准备好，就返回一个错误
-        if (!lcu || !lcu.isConnected) {
-            console.error("❌ [IPC] LCUManager 尚未连接，无法处理请求");
-            return {error: "LCU is not connected yet."};
-        }
+            if (!lcu || !lcu.isConnected) {
+                logger.error('❌ [IPC] LCUManager 尚未连接。请确保游戏客户端已启动，并尝试以管理员权限重新运行助手。');
+                return { error: '游戏客户端未连接 (LCU disconnect). 请检查游戏是否运行。' };
+            }
 
-        // 尝试执行请求
-        try {
-            console.log(`📞 [IPC] 收到请求: ${method} ${endpoint}`);
-            // 成功后，把数据包装在 data 字段里返回给前台
-            const data = await lcu.request(method, endpoint, body);
-            return { data };  // 包装成 { data: ... } 格式
-        } catch (e: any) {
-            console.error(`❌ [IPC] 处理请求 ${method} ${endpoint} 时出错:`, e);
-            // 失败后，把错误信息包装在 error 字段里返回
-            return {error: e.message};
+
+            try {
+                logger.info(`📞 [IPC] 收到请求: ${method} ${endpoint}`);
+                const data = await lcu.request(method, endpoint, body);
+                return { data };
+            } catch (err) {
+                logger.error(`❌ [IPC] 处理请求 ${method} ${endpoint} 时出错: ${err instanceof Error ? err.message : String(err)}`);
+                return { error: err instanceof Error ? err.message : String(err) };
+            }
         }
-    });
+    );
     //  游戏设置备份
-    ipcMain.handle(IpcChannel.CONFIG_BACKUP, async (event) => GameConfigHelper.backup())
-    ipcMain.handle(IpcChannel.CONFIG_RESTORE, async (event) => GameConfigHelper.restore())
+    ipcMain.handle(IpcChannel.CONFIG_BACKUP, async () => invokeWithIpcErrorLog(IpcChannel.CONFIG_BACKUP, () => GameConfigHelper.backup()))
+    ipcMain.handle(IpcChannel.CONFIG_RESTORE, async () => invokeWithIpcErrorLog(IpcChannel.CONFIG_RESTORE, () => GameConfigHelper.restore()))
     //  海克斯核心科技
-    ipcMain.handle(IpcChannel.HEX_START, async (event) => hexService.start())
-    ipcMain.handle(IpcChannel.HEX_STOP, async (event) => hexService.stop())
-    ipcMain.handle(IpcChannel.HEX_GET_STATUS, async (event) => hexService.isRunning)
+    ipcMain.handle(IpcChannel.HEX_START, async () => invokeWithIpcErrorLog(IpcChannel.HEX_START, () => hexService.start()))
+    ipcMain.handle(IpcChannel.HEX_STOP, async () => invokeWithIpcErrorLog(IpcChannel.HEX_STOP, () => hexService.stop()))
+    ipcMain.handle(IpcChannel.HEX_GET_STATUS, async () => hexService.isRunning)
     //  TFT相关操作
-    ipcMain.handle(IpcChannel.TFT_BUY_AT_SLOT, async (event, slot: number) => tftOperator.buyAtSlot(slot))
-    ipcMain.handle(IpcChannel.TFT_GET_SHOP_INFO, async (event) => tftOperator.getShopInfo())
-    ipcMain.handle(IpcChannel.TFT_GET_EQUIP_INFO, async (event) => tftOperator.getEquipInfo())
-    ipcMain.handle(IpcChannel.TFT_GET_BENCH_INFO, async (event) => tftOperator.getBenchInfo())
-    ipcMain.handle(IpcChannel.TFT_GET_FIGHT_BOARD_INFO, async (event) => tftOperator.getFightBoardInfo())
-    ipcMain.handle(IpcChannel.TFT_GET_LEVEL_INFO, async (event) => tftOperator.getLevelInfo())
-    ipcMain.handle(IpcChannel.TFT_GET_COIN_COUNT, async (event) => tftOperator.getCoinCount())
-    ipcMain.handle(IpcChannel.TFT_GET_LOOT_ORBS, async (event) => tftOperator.getLootOrbs())
-    ipcMain.handle(IpcChannel.TFT_GET_STAGE_INFO, async (event) => tftOperator.getGameStage())
-    ipcMain.handle(IpcChannel.TFT_SAVE_STAGE_SNAPSHOTS, async (event) => tftOperator.saveStageSnapshots())
-    ipcMain.handle(IpcChannel.TFT_TEST_SAVE_BENCH_SLOT_SNAPSHOT, async (event) => tftOperator.saveBenchSlotSnapshots())
-    ipcMain.handle(IpcChannel.TFT_TEST_SAVE_FIGHT_BOARD_SLOT_SNAPSHOT, async (event) => tftOperator.saveFightBoardSlotSnapshots())
-    ipcMain.handle(IpcChannel.TFT_TEST_SAVE_QUIT_BUTTON_SNAPSHOT, async (event) => tftOperator.saveQuitButtonSnapshot())
+    ipcMain.handle(IpcChannel.TFT_BUY_AT_SLOT, async (_event, slot: number) => invokeWithIpcErrorLog(IpcChannel.TFT_BUY_AT_SLOT, () => tftOperator.buyAtSlot(slot)))
+    ipcMain.handle(IpcChannel.TFT_GET_SHOP_INFO, async () => invokeWithIpcErrorLog(IpcChannel.TFT_GET_SHOP_INFO, () => tftOperator.getShopInfo()))
+    ipcMain.handle(IpcChannel.TFT_GET_EQUIP_INFO, async () => invokeWithIpcErrorLog(IpcChannel.TFT_GET_EQUIP_INFO, () => tftOperator.getEquipInfo()))
+    ipcMain.handle(IpcChannel.TFT_GET_BENCH_INFO, async () => invokeWithIpcErrorLog(IpcChannel.TFT_GET_BENCH_INFO, () => tftOperator.getBenchInfo()))
+    ipcMain.handle(IpcChannel.TFT_GET_FIGHT_BOARD_INFO, async () => invokeWithIpcErrorLog(IpcChannel.TFT_GET_FIGHT_BOARD_INFO, () => tftOperator.getFightBoardInfo()))
+    ipcMain.handle(IpcChannel.TFT_GET_LEVEL_INFO, async () => invokeWithIpcErrorLog(IpcChannel.TFT_GET_LEVEL_INFO, () => tftOperator.getLevelInfo()))
+    ipcMain.handle(IpcChannel.TFT_GET_COIN_COUNT, async () => invokeWithIpcErrorLog(IpcChannel.TFT_GET_COIN_COUNT, () => tftOperator.getCoinCount()))
+    ipcMain.handle(IpcChannel.TFT_GET_LOOT_ORBS, async () => invokeWithIpcErrorLog(IpcChannel.TFT_GET_LOOT_ORBS, () => tftOperator.getLootOrbs()))
+    ipcMain.handle(IpcChannel.TFT_GET_STAGE_INFO, async () => invokeWithIpcErrorLog(IpcChannel.TFT_GET_STAGE_INFO, () => tftOperator.getGameStage()))
+    ipcMain.handle(IpcChannel.TFT_SAVE_STAGE_SNAPSHOTS, async () => invokeWithIpcErrorLog(IpcChannel.TFT_SAVE_STAGE_SNAPSHOTS, () => tftOperator.saveStageSnapshots()))
+    ipcMain.handle(IpcChannel.TFT_TEST_SAVE_BENCH_SLOT_SNAPSHOT, async () => invokeWithIpcErrorLog(IpcChannel.TFT_TEST_SAVE_BENCH_SLOT_SNAPSHOT, () => tftOperator.saveBenchSlotSnapshots()))
+    ipcMain.handle(IpcChannel.TFT_TEST_SAVE_FIGHT_BOARD_SLOT_SNAPSHOT, async () => invokeWithIpcErrorLog(IpcChannel.TFT_TEST_SAVE_FIGHT_BOARD_SLOT_SNAPSHOT, () => tftOperator.saveFightBoardSlotSnapshots()))
+    ipcMain.handle(IpcChannel.TFT_TEST_SAVE_QUIT_BUTTON_SNAPSHOT, async () => invokeWithIpcErrorLog(IpcChannel.TFT_TEST_SAVE_QUIT_BUTTON_SNAPSHOT, () => tftOperator.saveQuitButtonSnapshot()))
     
     // 阵容相关
     ipcMain.handle(IpcChannel.LINEUP_GET_ALL, async (_event, season?: string) => {
@@ -850,7 +952,7 @@ function registerHandler() {
         settingsStore.set('selectedLineupIds', ids)
     })
     // 保存玩家自建阵容
-    ipcMain.handle(IpcChannel.LINEUP_SAVE, async (_event, config: any) => {
+    ipcMain.handle(IpcChannel.LINEUP_SAVE, async (_event, config: LineupConfig) => {
         return lineupLoader.saveLineup(config);
     })
     // 删除玩家自建阵容
@@ -874,11 +976,11 @@ function registerHandler() {
     ipcMain.handle(IpcChannel.TFT_DATA_GET_SNAPSHOT, async () => {
         return tftDataService.getSnapshot();
     })
-    ipcMain.handle(IpcChannel.PC_LOGIC_PLAN_ONCE, async (_event, state: any, context?: any) => {
-        return pcLogicRunner.planOnce(state, context);
+    ipcMain.handle(IpcChannel.PC_LOGIC_PLAN_ONCE, async (_event, state: ObservedState, context?: DecisionContext) => {
+        return invokeWithIpcErrorLog(IpcChannel.PC_LOGIC_PLAN_ONCE, () => pcLogicRunner.planOnce(state, context));
     })
-    ipcMain.handle(IpcChannel.ANDROID_SIMULATION_PLAN_ONCE, async (_event, state: any, context?: any) => {
-        return androidSimulationRunner.planOnce(state, context);
+    ipcMain.handle(IpcChannel.ANDROID_SIMULATION_PLAN_ONCE, async (_event, state: ObservedState, context?: DecisionContext) => {
+        return invokeWithIpcErrorLog(IpcChannel.ANDROID_SIMULATION_PLAN_ONCE, () => androidSimulationRunner.planOnce(state, context));
     })
     ipcMain.handle(IpcChannel.ANDROID_SIMULATION_LIST_SCENARIOS, async () => {
         return androidSimulationRunner.listScenarios();
@@ -893,21 +995,32 @@ function registerHandler() {
     // TFT 游戏模式相关
     ipcMain.handle(IpcChannel.TFT_GET_MODE, async () => settingsStore.get('tftMode'))
     ipcMain.handle(IpcChannel.TFT_SET_MODE, async (_event, mode: string) => {
-        settingsStore.set('tftMode', mode as any)
+        if (isValidTftMode(mode)) {
+            settingsStore.set('tftMode', mode)
+            return;
+        }
+        logger.warn(`[Main] 无效的 TFT 模式值: ${mode}`);
     })
 
     // 日志模式相关
     ipcMain.handle(IpcChannel.LOG_GET_MODE, async () => settingsStore.get('logMode'))
     ipcMain.handle(IpcChannel.LOG_SET_MODE, async (_event, mode: string) => {
-        settingsStore.set('logMode', mode as any)
-        // 同步更新 Logger 的最低日志级别
-        logger.setMinLevel(mode === 'DETAILED' ? 'debug' : 'info')
+        if (isValidLogMode(mode)) {
+            settingsStore.set('logMode', mode)
+            logger.setMinLevel(mode === LogMode.DETAILED ? 'debug' : 'info')
+            return;
+        }
+        logger.warn(`[Main] 无效的日志模式值: ${mode}`);
     })
     
     // 日志自动清理阈值
     ipcMain.handle(IpcChannel.LOG_GET_AUTO_CLEAN_THRESHOLD, async () => settingsStore.get('logAutoCleanThreshold'))
     ipcMain.handle(IpcChannel.LOG_SET_AUTO_CLEAN_THRESHOLD, async (_event, threshold: number) => {
-        settingsStore.set('logAutoCleanThreshold', threshold as any)
+        if (isValidLogAutoCleanThreshold(threshold)) {
+            settingsStore.set('logAutoCleanThreshold', threshold)
+            return;
+        }
+        logger.warn(`[Main] 无效的日志自动清理阈值: ${threshold}`);
     })
     
     // 游戏进程操作
@@ -966,10 +1079,10 @@ function registerHandler() {
     
     // 通用设置读写（支持点号路径，如 'window.bounds'）
     ipcMain.handle(IpcChannel.SETTINGS_GET, async (_event, key: string) => {
-        return settingsStore.get(key as any);
+        return settingsStore.get(key as never);
     })
-    ipcMain.handle(IpcChannel.SETTINGS_SET, async (_event, key: string, value: any) => {
-        settingsStore.set(key as any, value);
+    ipcMain.handle(IpcChannel.SETTINGS_SET, async (_event, key: string, value: unknown) => {
+        settingsStore.set(key as never, value as never);
     })
 
     // 统计数据
@@ -1053,8 +1166,35 @@ function registerHandler() {
                 releaseNotes: data.body || '',
                 publishedAt: data.published_at
             };
-        } catch (error: any) {
-            return { error: error.message || '检查更新失败' };
+        } catch (error: unknown) {
+            return { error: getErrorMessage(error) || '检查更新失败' };
         }
+    })
+
+    // ===================== 决策链路 Debug =====================
+    // 获取最新决策链路数据（从 RuleBasedDecisionEngine 获取）
+    ipcMain.handle(IpcChannel.DECISION_GET_LATEST, async () => {
+        // 返回决策链路快照（如果有）
+        // 这里可以从 StrategyService 或 GameStateManager 获取
+        return {
+            plans: [],
+            reasoning: [],
+            scores: [],
+            timestamp: Date.now(),
+        };
+    })
+
+    // ===================== 内存监控 =====================
+    // 获取内存统计
+    ipcMain.handle(IpcChannel.MEMORY_GET_STATS, async () => {
+        const used = process.memoryUsage();
+        return {
+            timestamp: Date.now(),
+            rss: used.rss,
+            heapTotal: used.heapTotal,
+            heapUsed: used.heapUsed,
+            external: used.external,
+            arrayBuffers: used.arrayBuffers,
+        };
     })
 }

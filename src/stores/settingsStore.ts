@@ -27,12 +27,16 @@ export interface GameStatistics {
 // 设置状态接口（前端关心的设置项）
 interface SettingsState {
     showDebugPage: boolean;
+    /** Beta 功能开关 */
+    betaFeaturesEnabled: boolean;
     /** 统计数据（运行时 + 持久化的聚合） */
     statistics: GameStatistics;
     /** 游戏区服 */
     gameRegion: GameRegion;
     /** 客户端类型 */
     gameClient: GameClient;
+    /** 是否已完成新手引导 */
+    onboardingCompleted: boolean;
 }
 
 /** 默认的统计数据 */
@@ -46,9 +50,11 @@ class SettingsStore {
     // 内部状态（从后端同步的缓存）
     private state: SettingsState = {
         showDebugPage: false,
+        betaFeaturesEnabled: false,
         statistics: { ...DEFAULT_STATISTICS },
         gameRegion: 'CN',
         gameClient: 'RIOT_PC',
+        onboardingCompleted: false,
     };
     
     // 订阅者列表
@@ -72,11 +78,19 @@ class SettingsStore {
             const showDebugPage = await window.settings.get<boolean>('showDebugPage');
             this.state.showDebugPage = showDebugPage;
 
+            // 读取 betaFeaturesEnabled
+            const betaFeaturesEnabled = await window.settings.get<boolean>('betaFeaturesEnabled');
+            this.state.betaFeaturesEnabled = !!betaFeaturesEnabled;
+
             // 读取区服与客户端类型
             const gameRegion = await window.settings.get<GameRegion>('gameRegion');
             if (gameRegion) this.state.gameRegion = gameRegion;
             const gameClient = await window.settings.get<GameClient>('gameClient');
             if (gameClient) this.state.gameClient = gameClient;
+
+            // 读取 onboardingCompleted
+            const onboardingCompleted = await window.settings.get<boolean>('onboardingCompleted');
+            this.state.onboardingCompleted = !!onboardingCompleted;
 
             // 读取统计数据
             const stats = await window.stats.getStatistics();
@@ -103,6 +117,13 @@ class SettingsStore {
     }
 
     /**
+     * 获取 betaFeaturesEnabled 的值
+     */
+    getBetaFeaturesEnabled(): boolean {
+        return this.state.betaFeaturesEnabled;
+    }
+
+    /**
      * 获取 showDebugPage 的值
      */
     getShowDebugPage(): boolean {
@@ -121,6 +142,13 @@ class SettingsStore {
      */
     getGameClient(): GameClient {
         return this.state.gameClient;
+    }
+
+    /**
+     * 获取新手引导完成状态
+     */
+    getOnboardingCompleted(): boolean {
+        return this.state.onboardingCompleted;
     }
 
     /**
@@ -180,6 +208,20 @@ class SettingsStore {
     }
 
     /**
+     * 设置新手引导完成状态并通知所有订阅者
+     * @param value 新的值
+     */
+    async setOnboardingCompleted(value: boolean): Promise<void> {
+        this.state.onboardingCompleted = value;
+        try {
+            await window.settings.set('onboardingCompleted', value);
+        } catch (error) {
+            console.error('[SettingsStore] 保存 onboardingCompleted 失败:', error);
+        }
+        this.notifyListeners();
+    }
+
+    /**
      * 手动刷新统计数据（从后端重新读取）
      * @description 用于前端需要主动获取最新统计时调用（如挂机开始/停止时）
      */
@@ -222,6 +264,23 @@ class SettingsStore {
             this.cleanupStatsListener = null;
         }
         this.listeners.clear();
+    }
+
+    /**
+     * 设置 betaFeaturesEnabled 并通知所有订阅者
+     * @param value 新的值
+     * @param persist 是否同步到后端（默认 true）
+     */
+    async setBetaFeaturesEnabled(value: boolean, persist = true): Promise<void> {
+        this.state.betaFeaturesEnabled = value;
+        if (persist) {
+            try {
+                await window.settings.set('betaFeaturesEnabled', value);
+            } catch (error) {
+                console.error('[SettingsStore] 保存 betaFeaturesEnabled 失败:', error);
+            }
+        }
+        this.notifyListeners();
     }
 }
 

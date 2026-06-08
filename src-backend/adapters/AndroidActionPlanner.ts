@@ -1,15 +1,13 @@
 import {
     androidEquipmentSlot,
     benchSlotPoints,
-    buyExpPoint,
     fightBoardSlotPoint,
     hexSlot,
-    refreshShopPoint,
-    shopSlot,
     type SimplePoint,
 } from "../TFTProtocol";
 import type { ActionPlan, ObservedState } from "../core/types";
 import type { BenchLocation, BoardLocation } from "../tft";
+import { androidBuyExpPoint, androidRefreshShopPoint, androidShopSlotPoints } from "./AndroidShopControls";
 
 export type AndroidOperationKind =
     | "BUY_SLOT"
@@ -20,6 +18,7 @@ export type AndroidOperationKind =
     | "MOVE_BOARD_TO_BENCH"
     | "EQUIP_TO_BOARD"
     | "PICK_AUGMENT"
+    | "PICK_LOOT"
     | "NOOP"
     | "UNSUPPORTED";
 
@@ -67,6 +66,18 @@ function parseInteger(value: unknown): number | null {
         return null;
     }
     return Math.trunc(parsed);
+}
+
+function parseNormalizedPoint(rawX: unknown, rawY: unknown): SimplePoint | null {
+    const x = Number(rawX);
+    const y = Number(rawY);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return null;
+    }
+    if (x < 0 || x > 1 || y < 0 || y > 1) {
+        return null;
+    }
+    return { x, y };
 }
 
 function normalizeShopSlot(rawValue: unknown): number | null {
@@ -141,7 +152,15 @@ function resolveTargetBoardLocation(rawValue: unknown, occupiedBoard: Set<BoardL
 }
 
 export function sortAndroidActionsForExecution(actions: ActionPlan[]): ActionPlan[] {
-    return [...actions].sort((a, b) => b.priority - a.priority || a.tick - b.tick);
+    return [...actions].sort((a, b) => {
+        if (a.type === "BUY" && b.type === "ROLL") {
+            return -1;
+        }
+        if (a.type === "ROLL" && b.type === "BUY") {
+            return 1;
+        }
+        return b.priority - a.priority || a.tick - b.tick;
+    });
 }
 
 export function buildAndroidExecutionPlan(
@@ -169,7 +188,7 @@ export function buildAndroidExecutionPlan(
                     break;
                 }
 
-                const slotKey = `SHOP_SLOT_${slot}` as keyof typeof shopSlot;
+                const slotKey = `SHOP_SLOT_${slot}` as keyof typeof androidShopSlotPoints;
                 pushStep({
                     kind: "BUY_SLOT",
                     actionType: action.type,
@@ -177,7 +196,7 @@ export function buildAndroidExecutionPlan(
                     reason: action.reason,
                     priority: action.priority,
                     slot,
-                    targetPoint: buildPoint(slotKey, shopSlot[slotKey]),
+                    targetPoint: buildPoint(slotKey, androidShopSlotPoints[slotKey]),
                 });
                 break;
             }
@@ -190,13 +209,13 @@ export function buildAndroidExecutionPlan(
                         description: `刷新商店 ${i + 1}/${count}`,
                         reason: action.reason,
                         priority: action.priority,
-                        targetPoint: buildPoint("REFRESH_SHOP", refreshShopPoint),
+                        targetPoint: buildPoint("REFRESH_SHOP", androidRefreshShopPoint),
                     });
                 }
                 break;
             }
             case "LEVEL_UP": {
-                const count = Math.min(3, Math.max(1, parseInteger(action.payload.count) ?? 1));
+                const count = Math.min(6, Math.max(1, parseInteger(action.payload.count) ?? 1));
                 for (let i = 0; i < count; i += 1) {
                     pushStep({
                         kind: "BUY_XP",
@@ -204,7 +223,7 @@ export function buildAndroidExecutionPlan(
                         description: `购买经验 ${i + 1}/${count}`,
                         reason: action.reason,
                         priority: action.priority,
-                        targetPoint: buildPoint("BUY_EXP", buyExpPoint),
+                        targetPoint: buildPoint("BUY_EXP", androidBuyExpPoint),
                     });
                 }
                 break;
@@ -299,6 +318,7 @@ export function buildAndroidExecutionPlan(
                 break;
             }
             case "PICK_AUGMENT": {
+                const directPoint = parseNormalizedPoint(action.payload.x, action.payload.y);
                 const slot = Math.max(1, Math.min(3, parseInteger(action.payload.slot) ?? 2));
                 const slotKey = `SLOT_${slot}` as keyof typeof hexSlot;
                 pushStep({
@@ -308,7 +328,24 @@ export function buildAndroidExecutionPlan(
                     reason: action.reason,
                     priority: action.priority,
                     slot,
-                    targetPoint: buildPoint(slotKey, hexSlot[slotKey]),
+                    targetPoint: directPoint
+                        ? buildPoint("AUGMENT_CHOICE_HINT", directPoint)
+                        : buildPoint(slotKey, hexSlot[slotKey]),
+                });
+                break;
+            }
+            case "PICK_LOOT": {
+                const x = parseInteger(action.payload.x);
+                const y = parseInteger(action.payload.y);
+                pushStep({
+                    kind: "PICK_LOOT",
+                    actionType: action.type,
+                    description: "优先拾取场上战利品球",
+                    reason: action.reason,
+                    priority: action.priority,
+                    targetPoint: x !== null && y !== null
+                        ? buildPoint("LOOT_ORB_HINT", { x, y })
+                        : undefined,
                 });
                 break;
             }

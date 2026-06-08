@@ -110,8 +110,12 @@ export class GameLoadingState implements IState {
         if (
             progressResult.decision.kind === "TAP_PRIMARY_CTA" ||
             progressResult.decision.kind === "TAP_DISMISS_OVERLAY" ||
+            progressResult.decision.kind === "TAP_SELECT_GAME_MODE" ||
+            progressResult.decision.kind === "TAP_CONFIRM_MODAL" ||
             progressResult.decision.kind === "TAP_START_QUEUE" ||
+            progressResult.decision.kind === "TAP_LEAVE_ROOM" ||
             progressResult.decision.kind === "TAP_ACCEPT_READY" ||
+            progressResult.decision.kind === "TAP_GAME_OVER_EXIT" ||
             progressResult.decision.kind === "TAP_CANCEL_QUEUE"
         ) {
             logger.info(
@@ -324,6 +328,8 @@ export class GameLoadingState implements IState {
      * @description 避免安卓模式仅凭模拟器窗口存在就误判为已进游戏。
      *              使用 InGame API 的 allGameData 作为实际在局指标。
      */
+    // TODO: uncomment when in-game signal detection is implemented
+    /*
     private async hasInGameSignal(): Promise<boolean> {
         try {
             const response = await inGameApi.get(InGameApiEndpoints.ALL_GAME_DATA);
@@ -337,4 +343,5 @@ export class GameLoadingState implements IState {
             return false;
         }
     }
+    */
 }

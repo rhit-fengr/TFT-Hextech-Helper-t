@@ -55,6 +55,7 @@ var IpcChannel = /* @__PURE__ */ ((IpcChannel2) => {
   IpcChannel2["HEX_TOGGLE_STOP_AFTER_GAME"] = "hex-toggle-stop-after-game";
   IpcChannel2["SETTINGS_GET"] = "settings-get";
   IpcChannel2["SETTINGS_SET"] = "settings-set";
+  IpcChannel2["DATA_DELETE_ALL"] = "data-delete-all";
   IpcChannel2["UTIL_IS_ELEVATED"] = "util-is-elevated";
   IpcChannel2["STATS_GET"] = "stats-get";
   IpcChannel2["STATS_UPDATED"] = "stats-updated";
@@ -67,8 +68,61 @@ var IpcChannel = /* @__PURE__ */ ((IpcChannel2) => {
   IpcChannel2["OVERLAY_SHOW"] = "overlay-show";
   IpcChannel2["OVERLAY_CLOSE"] = "overlay-close";
   IpcChannel2["OVERLAY_UPDATE_PLAYERS"] = "overlay-update-players";
+  IpcChannel2["DECISION_GET_LATEST"] = "decision-get-latest";
+  IpcChannel2["DECISION_CHAIN_UPDATED"] = "decision-chain-updated";
+  IpcChannel2["MEMORY_GET_STATS"] = "memory-get-stats";
+  IpcChannel2["MEMORY_SAMPLE_EVENT"] = "memory-sample-event";
   return IpcChannel2;
 })(IpcChannel || {});
+if (typeof globalThis.Module === "undefined") {
+  globalThis.Module = {
+    // Prevent opencv.js from trying to resolve/fetch the real .wasm file
+    locateFile: (_path) => {
+      return "";
+    },
+    // Silence noisy runtime output that previously overflowed test buffers
+    print: () => {
+    },
+    printErr: () => {
+    },
+    // Short-circuit WebAssembly instantiation so no network fetch occurs.
+    instantiateWasm: (_imports, callback) => {
+      try {
+        callback({ exports: {} }, {});
+      } catch (e) {
+        console.warn("Module.instantiateWasm stub failed:", e?.toString?.() ?? e);
+      }
+      return {};
+    },
+    setStatus: () => {
+    },
+    onRuntimeInitialized: () => {
+    }
+  };
+}
+if (typeof globalThis.cv === "undefined") {
+  globalThis.cv = (mod) => {
+    try {
+      mod.print = () => {
+      };
+      mod.printErr = () => {
+      };
+      mod.setStatus = () => {
+      };
+      mod.instantiateWasm = (_imports, callback) => {
+        try {
+          callback({ exports: {} }, {});
+        } catch (e) {
+        }
+        return {};
+      };
+      mod.onRuntimeInitialized?.();
+    } catch (e) {
+      console.warn("cv stub setup failed:", e?.toString?.() ?? e);
+    }
+    return mod;
+  };
+}
 const exposedIpcRenderer = {
   on(...args) {
     const [channel, listener] = args;
@@ -93,7 +147,11 @@ electron.contextBridge.exposeInMainWorld("ipcRenderer", exposedIpcRenderer);
 const ipcApi = {
   on: (channel, callback) => {
     const listener = (_event, ...args) => {
-      callback(...args);
+      try {
+        callback(...args);
+      } catch (err) {
+        console.error("[Preload] ipc.on callback error:", err);
+      }
     };
     electron.ipcRenderer.on(channel, listener);
     return () => {
@@ -274,6 +332,11 @@ const settingsApi = {
   set: (key, value) => electron.ipcRenderer.invoke(IpcChannel.SETTINGS_SET, key, value)
 };
 electron.contextBridge.exposeInMainWorld("settings", settingsApi);
+const appEnvApi = {
+  isGuiVerify: process.env.TFT_GUI_VERIFY === "1",
+  blocksRemoteAssets: process.env.TFT_BLOCK_REMOTE_ASSETS === "1"
+};
+electron.contextBridge.exposeInMainWorld("appEnv", appEnvApi);
 const lcuApi = {
   /**
    * 获取当前召唤师信息
@@ -376,3 +439,29 @@ const lcuApi = {
   }
 };
 electron.contextBridge.exposeInMainWorld("lcu", lcuApi);
+const decisionApi = {
+  /** 获取最新决策链路数据 */
+  getLatest: () => {
+    return electron.ipcRenderer.invoke(IpcChannel.DECISION_GET_LATEST);
+  },
+  /** 监听决策链路更新事件 */
+  onChainUpdated: (callback) => {
+    const listener = (_event, data) => callback(data);
+    electron.ipcRenderer.on(IpcChannel.DECISION_CHAIN_UPDATED, listener);
+    return () => electron.ipcRenderer.removeListener(IpcChannel.DECISION_CHAIN_UPDATED, listener);
+  }
+};
+electron.contextBridge.exposeInMainWorld("decision", decisionApi);
+const memoryApi = {
+  /** 获取当前内存使用统计 */
+  getStats: () => {
+    return electron.ipcRenderer.invoke(IpcChannel.MEMORY_GET_STATS);
+  },
+  /** 监听内存采样事件（每 500ms 推送） */
+  onSampleEvent: (callback) => {
+    const listener = (_event, stats) => callback(stats);
+    electron.ipcRenderer.on(IpcChannel.MEMORY_SAMPLE_EVENT, listener);
+    return () => electron.ipcRenderer.removeListener(IpcChannel.MEMORY_SAMPLE_EVENT, listener);
+  }
+};
+electron.contextBridge.exposeInMainWorld("memory", memoryApi);

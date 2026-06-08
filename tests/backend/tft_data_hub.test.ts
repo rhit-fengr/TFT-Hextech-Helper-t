@@ -68,3 +68,70 @@ test("TftDataHub merges snapshot display access with automation lineup access", 
     assert.equal(hub.getSelectedAutomationLineups(["auto-1", "missing"]).length, 1);
     assert.equal(hub.getAutomationLineups("S16")[0]?.name, "运营阵容");
 });
+
+test("TftDataHub champion/trait helpers", () => {
+    const hub = new TftDataHub();
+
+    // Known champion by Chinese name
+    const leona = hub.getChampionDefinition("蕾欧娜");
+    assert.ok(leona, "蕾欧娜 should resolve");
+    assert.equal(leona?.englishId, "TFT16_Leona");
+
+    // Known champion by english id alias
+    const leonaByEn = hub.getChampionDefinition("TFT16_Leona");
+    assert.ok(leonaByEn, "TFT16_Leona should resolve via alias");
+    assert.equal(leonaByEn?.englishId, "TFT16_Leona");
+
+    // Trait lookup by chinese name
+    const bruiser = hub.getTraitDefinition("斗士");
+    assert.ok(bruiser);
+    assert.deepEqual(bruiser?.levels, [2, 4, 6]);
+
+    // Trait lookup by id
+    const bruiserById = hub.getTraitDefinition("10220");
+    assert.ok(bruiserById);
+    assert.equal(bruiserById?.name, "斗士");
+
+    // Trait breakpoints for a champion (蕾欧娜 -> 巨神峰)
+    const breakpoints = hub.getTraitBreakpointsForChampion("蕾欧娜");
+    assert.deepEqual(breakpoints, [1, 2, 3, 4, 5, 6]);
+
+    // Unknown champion returns undefined/empty
+    assert.equal(hub.getChampionDefinition("不存在的棋子"), undefined);
+    assert.deepEqual(hub.getTraitBreakpointsForChampion("不存在的棋子"), []);
+});
+
+test("TftDataHub equipment helpers - getEquipmentNameById", () => {
+    const hub = new TftDataHub();
+    // Known equipment id -> name
+    assert.equal(hub.getEquipmentNameById("91840"), "鬼索的狂暴之刃");
+    // Unknown id -> undefined
+    assert.equal(hub.getEquipmentNameById("00000"), undefined);
+});
+
+test("TftDataHub equipment helpers - isWearableEquipment", () => {
+    const hub = new TftDataHub();
+    assert.equal(hub.isWearableEquipment("鬼索的狂暴之刃"), true);
+    // Special tool with equipId "-1" should not be wearable
+    assert.equal(hub.isWearableEquipment("装备拆卸器"), false);
+});
+
+test("TftDataHub equipment helpers - getEquipmentComponents", () => {
+    const hub = new TftDataHub();
+    // Base component returns itself
+    assert.deepEqual(hub.getEquipmentComponents("暴风之剑"), ["暴风之剑"]);
+    // Composite item returns its two components in order
+    assert.deepEqual(hub.getEquipmentComponents("鬼索的狂暴之刃"), ["反曲之弓", "无用大棒"]);
+});
+
+test("TftDataHub equipment helpers - getEquipmentRoleHint", () => {
+    const hub = new TftDataHub();
+    // Single backline base component
+    assert.equal(hub.getEquipmentRoleHint("暴风之剑"), "backline");
+    // Single frontline base component
+    assert.equal(hub.getEquipmentRoleHint("锁子甲"), "frontline");
+    // Mixed components -> any
+    assert.equal(hub.getEquipmentRoleHint("斯特拉克的挑战护手"), "any");
+    // Two back components -> backline
+    assert.equal(hub.getEquipmentRoleHint("鬼索的狂暴之刃"), "backline");
+});

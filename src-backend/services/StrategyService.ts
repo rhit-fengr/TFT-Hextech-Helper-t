@@ -24,8 +24,6 @@ import {
     fightBoardSlotPoint,
     ChampionKey,
     ShopSlotIndex,
-    TFT_16_EQUIP_DATA,
-    EquipKey,
     sharedDraftPoint,
     hexSlot,
     TFTMode,
@@ -252,7 +250,7 @@ export class StrategyService {
             return;
         }
 
-        const {type, stageText, stage, round, isNewStage} = event;
+        const {type, stage, round} = event;
 
         // 更新当前阶段/回合
         this.currentStage = stage;
@@ -430,27 +428,14 @@ export class StrategyService {
      * TODO: 实现特殊道具的使用策略（拆卸器/金拆/重铸器等），并加入更严格的目标选择与安全保护。
      */
     private isWearableEquipmentName(itemName: string): boolean {
-        const data = TFT_16_EQUIP_DATA[itemName as EquipKey];
-
-        // 未知物品：为了安全，默认按"不可穿戴"处理，避免误把道具当装备拖到棋子身上。
-        if (!data) {
-            return false;
-        }
-
-        // 当前协议里 specialEquip 统一用 equipId = "-1" 标记（例如：装备拆卸器/重铸器/强化果实/复制器等）
-        // 这些都不是"穿上去就生效"的传统装备。
-        if (data.equipId === "-1") {
-            return false;
-        }
-
-        return true;
+        return strategyDataHub.isWearableEquipment(itemName);
     }
 
     /**
      * 推断：装备更适合"前排"还是"后排"
-     * @description
-     * 我们没有直接的"装备类型标签"（坦装/输出装），但可以利用 `TFT_16_EQUIP_DATA.formula`：
-     * - 基础散件：formula 为空
+      * @description
+      * 我们没有直接的"装备类型标签"（坦装/输出装），但可以利用装备 formula 字段：
+      * - 基础散件：formula 为空
      * - 成装：formula 是 "散件ID1,散件ID2"
      *
      * 基于散件做一个非常粗粒度的启发式（足够让"随便上装备"变得更像人）：
@@ -460,70 +445,19 @@ export class StrategyService {
      *
      * TODO: 后续可以结合"阵容配置的前排/后排位"或"英雄定位(主C/主T)"做更准确的分配。
      */
-    private getEquipmentRolePreference(itemName: string): 'frontline' | 'backline' | 'any' {
-        const data = TFT_16_EQUIP_DATA[itemName as EquipKey];
-        if (!data) return 'any';
-
-        // 取组成它的散件名（成装取 2 个散件；散件本身返回自己）
-        const componentNames = this.getComponentNamesOfItem(itemName);
-        if (componentNames.length === 0) return 'any';
-
-        const isFrontlineComponent = (name: string): boolean => {
-            return name === '锁子甲' || name === '负极斗篷' || name === '巨人腰带';
-        };
-
-        const isBacklineComponent = (name: string): boolean => {
-            return name === '反曲之弓' || name === '暴风之剑' || name === '无用大棒' || name === '女神之泪';
-        };
-
-        const isNeutralComponent = (name: string): boolean => {
-            return name === '拳套' || name === '金铲铲' || name === '金锅锅';
-        };
-
-        // 只有一个散件（基础散件）时：直接按散件决定倾向
-        if (componentNames.length === 1) {
-            const c = componentNames[0];
-            if (isFrontlineComponent(c)) return 'frontline';
-            if (isBacklineComponent(c)) return 'backline';
-            if (isNeutralComponent(c)) return 'any';
-            return 'any';
-        }
-
-        // 两个散件（成装）时：
-        // - 双防御散件 → 更像前排装
-        // - 双输出散件 → 更像后排装
-        // - 混搭 → 暂时按通用装处理（避免误导）
-        const frontlineCount = componentNames.filter(isFrontlineComponent).length;
-        const backlineCount = componentNames.filter(isBacklineComponent).length;
-
-        if (frontlineCount === 2) return 'frontline';
-        if (backlineCount === 2) return 'backline';
-
-        // 混搭/含拳套/转职等，先按通用
-        return 'any';
+     private getEquipmentRolePreference(itemName: string): 'frontline' | 'backline' | 'any' {
+        return strategyDataHub.getEquipmentRoleHint(itemName);
     }
 
-    /**
-     * 获取某件装备由哪些"基础散件"组成
-     * @returns 散件名称数组：
-     * - 基础散件：返回 [自身]
-     * - 成装：返回 [散件1, 散件2]
-     */
-    private getComponentNamesOfItem(itemName: string): string[] {
-        const equip = TFT_16_EQUIP_DATA[itemName as EquipKey];
-        if (!equip) return [];
-
-        const formula = (equip.formula ?? '').trim();
-        if (!formula) {
-            return [itemName];
-        }
-
-        const [id1, id2] = formula.split(',');
-        const name1 = id1 ? this.findEquipNameById(id1) : undefined;
-        const name2 = id2 ? this.findEquipNameById(id2) : undefined;
-
-        return [name1, name2].filter((n): n is string => Boolean(n));
-    }
+    // /**
+    //  * 获取某件装备由哪些"基础散件"组成
+    //  * @returns 散件名称数组：
+    //  * - 基础散件：返回 [自身]
+    //  * - 成装：返回 [散件1, 散件2]
+    //  */
+    // private getComponentNamesOfItem(itemName: string): string[] {
+    //     return strategyDataHub.getEquipmentComponents(itemName);
+    // }
 
     /**
      * 判断某个棋子是否符合装备倾向（这里用"射程"近似判断前排/后排）
@@ -579,137 +513,134 @@ export class StrategyService {
         return best?.location ?? null;
     }
 
-    /**
-     * 判断：当前场上是否存在任意一个"核心棋子"
-     * @returns 是否存在核心棋子
-     *
-     * @description
-     * - "核心棋子"来自阵容配置（`ChampionConfig.items` 有装备的那批）。
-     * - 这个判断用于装备策略的触发门槛：
-     *   - 有核心在场 → 可以更积极给核心做神装
-     *   - 核心不在场 → 默认选择"捏装备"等核心，除非装备快满
-     */
-    private hasAnyCoreChampionOnBoard(): boolean {
-        const coreChampions = this.getCoreChampions();
-        if (coreChampions.length === 0) return false;
+    // /**
+    //  * 判断：当前场上是否存在任意一个"核心棋子"
+    //  * @returns 是否存在核心棋子
+    //  *
+    //  * @description
+    //  * - "核心棋子"来自阵容配置（`ChampionConfig.items` 有装备的那批）。
+    //  * - 这个判断用于装备策略的触发门槛：
+    //  *   - 有核心在场 → 可以更积极给核心做神装
+    //  *   - 核心不在场 → 默认选择"捏装备"等核心，除非装备快满
+    //  */
+    // private hasAnyCoreChampionOnBoard(): boolean {
+    //     const coreChampions = this.getCoreChampions();
+    //     if (coreChampions.length === 0) return false;
+    //
+    //     const boardUnits = gameStateManager.getBoardUnitsWithLocation();
+    //     if (boardUnits.length === 0) return false;
+    //
+    //     const boardNames = new Set(boardUnits.map(u => u.tftUnit.displayName as ChampionKey));
+    //     return coreChampions.some(c => boardNames.has(c.name));
+    // }
 
-        const boardUnits = gameStateManager.getBoardUnitsWithLocation();
-        if (boardUnits.length === 0) return false;
+    // /**
+    //  * 判断：当前是否存在"可执行的上装备动作"
+    //  * @param equipments 当前装备栏（紧凑数组，只包含真实装备）
+    //  *
+    //  * @description
+    //  * 这是为了做"聪明闸门"：
+    //  * - 你说得对：前期的打工仔（item holder）最后会卖掉，装备会回到装备栏。
+    //  *   因此 **核心没到场时，也可以先把核心推荐装挂在打工仔身上**（保血/提速）。
+    //  * - 但我们又不想每回合都"空跑"一遍装备策略，所以这里先做一次轻量判断：
+    //  *   只要发现「能穿」或「能合成并穿」的动作，就允许进入 `executeEquipStrategy()`。
+    //  */
+    // private canPerformAnyEquipOperation(equipments: IdentifiedEquip[]): { can: boolean; reason: string } {
+    //     // =========================
+    //     // 保前四的装备思路：
+    //     // - 优先：如果能合出"核心推荐装/替代装"，就合成并立刻给（稳定提升战力）
+    //     // - 其次：有散件就先挂到场上（打工仔也行），用即时战力换血量
+    //     // =========================
 
-        const boardNames = new Set(boardUnits.map(u => u.tftUnit.displayName as ChampionKey));
-        return coreChampions.some(c => boardNames.has(c.name));
-    }
+    //     // 0) 过滤掉"特殊道具"（拆卸器/重铸器等），这些不属于可穿戴装备。
+    //     const wearableEquipments = equipments.filter(e => this.isWearableEquipmentName(e.name));
+    //     if (wearableEquipments.length === 0) {
+    //         return { can: false, reason: "装备栏里没有可穿戴装备（可能全是拆卸器/重铸器等特殊道具）" };
+    //     }
 
-    /**
-     * 判断：当前是否存在"可执行的上装备动作"
-     * @param equipments 当前装备栏（紧凑数组，只包含真实装备）
-     *
-     * @description
-     * 这是为了做"聪明闸门"：
-     * - 你说得对：前期的打工仔（item holder）最后会卖掉，装备会回到装备栏。
-     *   因此 **核心没到场时，也可以先把核心推荐装挂在打工仔身上**（保血/提速）。
-     * - 但我们又不想每回合都"空跑"一遍装备策略，所以这里先做一次轻量判断：
-     *   只要发现「能穿」或「能合成并穿」的动作，就允许进入 `executeEquipStrategy()`。
-     */
-    private canPerformAnyEquipOperation(equipments: IdentifiedEquip[]): { can: boolean; reason: string } {
-        // =========================
-        // 保前四的装备思路：
-        // - 优先：如果能合出"核心推荐装/替代装"，就合成并立刻给（稳定提升战力）
-        // - 其次：有散件就先挂到场上（打工仔也行），用即时战力换血量
-        // =========================
+    //     // 1) 先检查是否存在"可上装备的单位"（⚠️ 目前只支持给棋盘单位穿装备）
+    //     const boardUnits = gameStateManager.getBoardUnitsWithLocation();
 
-        // 0) 过滤掉"特殊道具"（拆卸器/重铸器等），这些不属于可穿戴装备。
-        const wearableEquipments = equipments.filter(e => this.isWearableEquipmentName(e.name));
-        if (wearableEquipments.length === 0) {
-            return { can: false, reason: "装备栏里没有可穿戴装备（可能全是拆卸器/重铸器等特殊道具）" };
-        }
+    //     // 使用与"上棋/替换弱子"一致的价值评分（calculateUnitScore），挑选最值得挂装备的单位。
+    //     // 这样后期即使 4/5 费棋子还没 2★，也不会被低费 2★长期压制而拿不到装备。
+    //     const targetChampions = this.targetChampionNames;
 
-        // 1) 先检查是否存在"可上装备的单位"（⚠️ 目前只支持给棋盘单位穿装备）
-        const boardUnits = gameStateManager.getBoardUnitsWithLocation();
+    //     let equipableUnit: (typeof boardUnits)[number] | null = null;
+    //     let bestScore = -Infinity;
 
-        // 使用与"上棋/替换弱子"一致的价值评分（calculateUnitScore），挑选最值得挂装备的单位。
-        // 这样后期即使 4/5 费棋子还没 2★，也不会被低费 2★长期压制而拿不到装备。
-        const targetChampions = this.targetChampionNames;
+    //     for (const u of boardUnits) {
+    //         if (u.equips.length >= 3) continue;
+    //         const score = this.calculateUnitScore(u.tftUnit, u.starLevel, targetChampions);
+    //         if (!equipableUnit || score > bestScore) {
+    //             equipableUnit = u;
+    //             bestScore = score;
+    //         }
+    //     }
 
-        let equipableUnit: (typeof boardUnits)[number] | null = null;
-        let bestScore = -Infinity;
+    //     if (!equipableUnit) {
+    //         return { can: false, reason: "棋盘上没有可穿戴装备的单位（可能全员满装备/无单位）" };
+    //     }
 
-        for (const u of boardUnits) {
-            if (u.equips.length >= 3) continue;
-            const score = this.calculateUnitScore(u.tftUnit, u.starLevel, targetChampions);
-            if (!equipableUnit || score > bestScore) {
-                equipableUnit = u;
-                bestScore = score;
-            }
-        }
+    //     // 2) 如果背包里有"散件"，就允许执行装备策略（散件先上，拉即时战力）
+    //     //    这里用 formula 是否为空来粗略判断"基础散件"（暴风大剑/反曲弓/女神泪等）
+    //     const component = wearableEquipments.find(e => strategyDataHub.isBaseComponentEquipment(e.name));
+    //     if (component) {
+    //         return { can: true, reason: `存在散件可穿戴：${component.name} -> ${equipableUnit.tftUnit.displayName}` };
+    //     }
 
-        if (!equipableUnit) {
-            return { can: false, reason: "棋盘上没有可穿戴装备的单位（可能全员满装备/无单位）" };
-        }
+    //     // 3) 再判断"能否合成/穿戴核心装"（没有核心配置时，直接跳过这一段）
+    //     const coreChampions = this.getCoreChampions();
+    //     if (coreChampions.length === 0) {
+    //         return { can: false, reason: "阵容配置中没有核心棋子/核心装备配置" };
+    //     }
 
-        // 2) 如果背包里有"散件"，就允许执行装备策略（散件先上，拉即时战力）
-        //    这里用 formula 是否为空来粗略判断"基础散件"（暴风大剑/反曲弓/女神泪等）
-        const component = wearableEquipments.find(e => {
-            const data = TFT_16_EQUIP_DATA[e.name as EquipKey];
-            return data && (data.formula ?? "") === "";
-        });
-        if (component) {
-            return { can: true, reason: `存在散件可穿戴：${component.name} -> ${equipableUnit.tftUnit.displayName}` };
-        }
+    //     // 建立装备背包快照（模拟数量）
+    //     const bagSnapshot = new Map<string, number>();
+    //     for (const equip of equipments) {
+    //         bagSnapshot.set(equip.name, (bagSnapshot.get(equip.name) || 0) + 1);
+    //     }
 
-        // 3) 再判断"能否合成/穿戴核心装"（没有核心配置时，直接跳过这一段）
-        const coreChampions = this.getCoreChampions();
-        if (coreChampions.length === 0) {
-            return { can: false, reason: "阵容配置中没有核心棋子/核心装备配置" };
-        }
+    //     for (const config of coreChampions) {
+    //         // 注意：这里复用 `findUnitForEquipment()`
+    //         // - 核心在场 → 返回核心
+    //         // - 核心不在场 → 返回打工仔（item holder）
+    //         const targetWrapper = this.findUnitForEquipment(config.name);
+    //         if (!targetWrapper) continue;
 
-        // 建立装备背包快照（模拟数量）
-        const bagSnapshot = new Map<string, number>();
-        for (const equip of equipments) {
-            bagSnapshot.set(equip.name, (bagSnapshot.get(equip.name) || 0) + 1);
-        }
+    //         // 装备已满（3件）就不考虑
+    //         if (targetWrapper.unit.equips.length >= 3) continue;
 
-        for (const config of coreChampions) {
-            // 注意：这里复用 `findUnitForEquipment()`
-            // - 核心在场 → 返回核心
-            // - 核心不在场 → 返回打工仔（item holder）
-            const targetWrapper = this.findUnitForEquipment(config.name);
-            if (!targetWrapper) continue;
+    //         // 取推荐装备列表（items 是纯字符串数组）
+    //         const desiredItems: string[] = [];
+    //         if (config.items) {
+    //             desiredItems.push(...config.items);
+    //         }
+    //         if (desiredItems.length === 0) continue;
 
-            // 装备已满（3件）就不考虑
-            if (targetWrapper.unit.equips.length >= 3) continue;
+    //         // 只要存在一个"能执行"的动作就放行
+    //         for (const itemName of desiredItems) {
+    //             const alreadyHas = targetWrapper.unit.equips.some(e => e.name === itemName);
+    //             if (alreadyHas) continue;
 
-            // 取推荐装备列表（items 是纯字符串数组）
-            const desiredItems: string[] = [];
-            if (config.items) {
-                desiredItems.push(...config.items);
-            }
-            if (desiredItems.length === 0) continue;
+    //             if ((bagSnapshot.get(itemName) || 0) > 0) {
+    //                 return {
+    //                     can: true,
+    //                     reason: `存在可穿戴动作：${itemName} -> ${targetWrapper.isCore ? '核心' : '打工'}(${targetWrapper.unit.tftUnit.displayName})`,
+    //                 };
+    //             }
 
-            // 只要存在一个"能执行"的动作就放行
-            for (const itemName of desiredItems) {
-                const alreadyHas = targetWrapper.unit.equips.some(e => e.name === itemName);
-                if (alreadyHas) continue;
+    //             const synthesis = this.checkSynthesis(itemName, bagSnapshot);
+    //             if (synthesis) {
+    //                 return {
+    //                     can: true,
+    //                     reason: `存在可合成动作：${itemName}(${synthesis.component1}+${synthesis.component2}) -> ${targetWrapper.isCore ? '核心' : '打工'}(${targetWrapper.unit.tftUnit.displayName})`,
+    //                 };
+    //             }
+    //         }
+    //     }
 
-                if ((bagSnapshot.get(itemName) || 0) > 0) {
-                    return {
-                        can: true,
-                        reason: `存在可穿戴动作：${itemName} -> ${targetWrapper.isCore ? '核心' : '打工'}(${targetWrapper.unit.tftUnit.displayName})`,
-                    };
-                }
-
-                const synthesis = this.checkSynthesis(itemName, bagSnapshot);
-                if (synthesis) {
-                    return {
-                        can: true,
-                        reason: `存在可合成动作：${itemName}(${synthesis.component1}+${synthesis.component2}) -> ${targetWrapper.isCore ? '核心' : '打工'}(${targetWrapper.unit.tftUnit.displayName})`,
-                    };
-                }
-            }
-        }
-
-        return { can: false, reason: "当前没有可执行的上装备/合成动作" };
-    }
+    //     return { can: false, reason: "当前没有可执行的上装备/合成动作" };
+    // }
 
     /**
      * 装备策略触发门槛
@@ -1134,27 +1065,32 @@ export class StrategyService {
         const benchUnits = await tftOperator.getBenchInfo();
         const boardUnits = await tftOperator.getFightBoardInfo();
 
-        const newLevel = levelInfo?.level ?? previousLevel;
+        try {
+            const newLevel = levelInfo?.level ?? previousLevel;
 
-        // 3. 更新到 GameStateManager
-        gameStateManager.updateSnapshot({
-            benchUnits,
-            boardUnits,
-            shopUnits,
-            equipments,
-            level: newLevel,
-            currentXp: levelInfo?.currentXp ?? 0,
-            totalXp: levelInfo?.totalXp ?? 0,
-            gold: gold ?? 0,
-        });
+            // 3. 更新到 GameStateManager
+            gameStateManager.updateSnapshot({
+                benchUnits,
+                boardUnits,
+                shopUnits,
+                equipments,
+                level: newLevel,
+                currentXp: levelInfo?.currentXp ?? 0,
+                totalXp: levelInfo?.totalXp ?? 0,
+                gold: gold ?? 0,
+            });
 
-        // 4. 如果等级变化，更新目标棋子列表
-        if (newLevel !== previousLevel) {
-            logger.info(`[StrategyService] 等级变化: ${previousLevel} → ${newLevel}`);
-            this.updateTargetChampions(newLevel);
+            // 4. 如果等级变化，更新目标棋子列表
+            if (newLevel !== previousLevel) {
+                logger.info(`[StrategyService] 等级变化: ${previousLevel} → ${newLevel}`);
+                this.updateTargetChampions(newLevel);
+            }
+
+            logger.info("[StrategyService] 游戏状态采集完成");
+        } catch (error: unknown) {
+            logger.error(`[StrategyService] refreshGameState failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+            throw error;
         }
-
-        logger.info("[StrategyService] 游戏状态采集完成");
     }
 
     /**
@@ -1278,32 +1214,37 @@ export class StrategyService {
         // 3. 依次拾取战利品球
         let pickedCount = 0;  // 记录成功拾取的数量
 
-        for (const orb of sortedOrbs) {
-            // 检查战斗状态是否发生变化
-            // 无论是 战斗→非战斗 还是 非战斗→战斗，状态变了就停止拾取
-            const currentFightingState = this.isFighting();
-            if (currentFightingState !== initialFightingState) {
-                logger.info(
-                    `[StrategyService] 战斗状态变化 (${initialFightingState} → ${currentFightingState})，停止拾取`
-                );
-                break;
+        try {
+            for (const orb of sortedOrbs) {
+                // 检查战斗状态是否发生变化
+                // 无论是 战斗→非战斗 还是 非战斗→战斗，状态变了就停止拾取
+                const currentFightingState = this.isFighting();
+                if (currentFightingState !== initialFightingState) {
+                    logger.info(
+                        `[StrategyService] 战斗状态变化 (${initialFightingState} → ${currentFightingState})，停止拾取`
+                    );
+                    break;
+                }
+
+                logger.info(`[StrategyService] 正在拾取 ${orb.type} 战利品球，位置: (${orb.x}, ${orb.y}), 等待 ${sleepTime}ms`);
+
+                // 右键点击战利品球位置，小小英雄会自动移动过去拾取
+                // mouseController.clickAt 接受的是游戏内相对坐标，orb.x/orb.y 正好是相对坐标
+                await mouseController.clickAt({x: orb.x, y: orb.y}, MouseButtonType.RIGHT);
+
+                // 等待小小英雄移动到目标位置并拾取
+                await sleep(sleepTime);
+                pickedCount++;
             }
 
-            logger.info(`[StrategyService] 正在拾取 ${orb.type} 战利品球，位置: (${orb.x}, ${orb.y}), 等待 ${sleepTime}ms`);
-
-            // 右键点击战利品球位置，小小英雄会自动移动过去拾取
-            // mouseController.clickAt 接受的是游戏内相对坐标，orb.x/orb.y 正好是相对坐标
-            await mouseController.clickAt({x: orb.x, y: orb.y}, MouseButtonType.RIGHT);
-
-            // 等待小小英雄移动到目标位置并拾取
-            await sleep(sleepTime);
-            pickedCount++;
+            logger.info(`[StrategyService] 战利品拾取完成，共拾取 ${pickedCount} 个`);
+            await tftOperator.selfResetPosition();
+            return pickedCount > 0;
+        } catch (error: unknown) {
+            logger.error(`[StrategyService] pickUpLootOrbs failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+            // 保守起见：如果拾取失败，返回 false 但不抛出，避免阻塞上层逻辑
+            return false;
         }
-
-        logger.info(`[StrategyService] 战利品拾取完成，共拾取 ${pickedCount} 个`);
-        await tftOperator.selfResetPosition();
-
-        return pickedCount > 0;
     }
 
     // ============================================================
@@ -1438,41 +1379,41 @@ export class StrategyService {
         return false;
     }
 
-    /**
-     * 尝试卖出一个无用棋子单位（用于腾位置）
-     * @param targetChampions 目标棋子集合
-     * @returns 是否成功卖出
-     */
-    private async sellSingleTrashUnit(targetChampions: Set<ChampionKey>): Promise<boolean> {
-        const benchUnits = gameStateManager.getBenchUnitsWithIndex();
-
-        // 筛选可卖棋子：非目标棋子可卖
-        // 注意：非目标棋子即使是对子也可以卖（已不在目标阵容中，三连无意义）
-        //       只有目标棋子的对子才需要保护
-        const candidates = benchUnits.filter(({unit}) => {
-            const name = unit.tftUnit.displayName as ChampionKey;
-            // 不可售卖的棋子（训练假人、魔像等）排除
-            if (strategyDataHub.isUnitUnsellable(name)) return false;
-            // 目标棋子不卖
-            if (targetChampions.has(name)) return false;
-            return true;
-        });
-
-        if (candidates.length === 0) return false;
-
-        // 按价格从低到高排序，优先卖便宜的
-        candidates.sort((a, b) => a.unit.tftUnit.price - b.unit.tftUnit.price);
-
-        const target = candidates[0];
-        logger.info(`[StrategyService] 腾位置卖出: ${target.unit.tftUnit.displayName}`);
-
-        await tftOperator.sellUnit(`SLOT_${target.index + 1}`);
-        gameStateManager.setBenchSlotEmpty(target.index);
-        gameStateManager.updateGold(gameStateManager.getGold() + target.unit.tftUnit.price);
-        await sleep(100);
-
-        return true;
-    }
+    // /**
+    //  * 尝试卖出一个无用棋子单位（用于腾位置）
+    //  * @param targetChampions 目标棋子集合
+    //  * @returns 是否成功卖出
+    //  */
+    // private async sellSingleTrashUnit(targetChampions: Set<ChampionKey>): Promise<boolean> {
+    //     const benchUnits = gameStateManager.getBenchUnitsWithIndex();
+    //
+    //     // 筛选可卖棋子：非目标棋子可卖
+    //     // 注意：非目标棋子即使是对子也可以卖（已不在目标阵容中，三连无意义）
+    //     //       只有目标棋子的对子才需要保护
+    //     const candidates = benchUnits.filter(({unit}) => {
+    //         const name = unit.tftUnit.displayName as ChampionKey;
+    //         // 不可售卖的棋子（训练假人、魔像等）排除
+    //         if (strategyDataHub.isUnitUnsellable(name)) return false;
+    //         // 目标棋子不卖
+    //         if (targetChampions.has(name)) return false;
+    //         return true;
+    //     });
+    //
+    //     if (candidates.length === 0) return false;
+    //
+    //     // 按价格从低到高排序，优先卖便宜的
+    //     candidates.sort((a, b) => a.unit.tftUnit.price - b.unit.tftUnit.price);
+    //
+    //     const target = candidates[0];
+    //     logger.info(`[StrategyService] 腾位置卖出: ${target.unit.tftUnit.displayName}`);
+    //
+    //     await tftOperator.sellUnit(`SLOT_${target.index + 1}`);
+    //     gameStateManager.setBenchSlotEmpty(target.index);
+    //     gameStateManager.updateGold(gameStateManager.getGold() + target.unit.tftUnit.price);
+    //     await sleep(100);
+    //
+    //     return true;
+    // }
 
     /**
      * 批量分析商店购买决策
@@ -1849,20 +1790,25 @@ export class StrategyService {
         return score;
     }
 
+    // TODO: Implement getComponentNamesOfItem if equipment component tracking is needed
+    // /**
+    //  * 获取某件装备由哪些"基础散件"组成
+    //  * @returns 散件名称数组：
+    //  * - 基础散件：返回 [自身]
+    //  * - 成装：返回 [散件1, 散件2]
+    //  */
+    // private getComponentNamesOfItem(itemName: string): string[] {
+    //     return strategyDataHub.getEquipmentComponents(itemName);
+    // }
+
     /**
-     * 获取棋子的羁绊列表（种族 + 职业）
+     * 获取棋子的羁绊列表
      * @param championName 棋子名称
-     * @returns 羁绊名称数组，找不到返回空数组
-     *
-     * @description 从当前游戏模式对应的棋子数据集中查找。
-     *              TFTUnit 的 traits 字段合并了 origins 和 classes，直接使用即可。
+     * @returns 羁绊名称数组
      */
     private getChampionTraits(championName: string): string[] {
-        const chessData = strategyDataHub.getChampionCatalogForMode(this.gameMode);
-        const unitData = chessData[championName];
-        if (!unitData) return [];
-        // traits 已经是 origins + classes 的合并
-        return unitData.traits ?? [];
+        const champion = strategyDataHub.getChampionDefinition(championName);
+        return champion?.traits ?? [];
     }
 
     /**
@@ -2055,7 +2001,7 @@ export class StrategyService {
      * 3. 有足够金币
      * 4. 备战席有空位（用于暂存购买的棋子）
      */
-    private async tryBuySynergyUnitsFromShop(targetChampions: Set<ChampionKey>, slotsToFill: number): Promise<void> {
+    private async tryBuySynergyUnitsFromShop(_targetChampions: Set<ChampionKey>, slotsToFill: number): Promise<void> {
         const shopUnits = gameStateManager.getShopUnits();
         const currentGold = gameStateManager.getGold();
 
@@ -2210,6 +2156,7 @@ export class StrategyService {
         // 走动间隔（毫秒）
         const walkInterval = 3000;
 
+        // eslint-disable-next-line no-constant-condition
         while (true) {
             // 退出条件 1：战斗状态发生变化（非战斗→战斗 或 战斗→非战斗）
             if (this.isFighting() !== entryFightingState) {
@@ -2401,7 +2348,7 @@ export class StrategyService {
         const snapshot = gameStateManager.getSnapshotSync();
         if (!snapshot) return;
 
-        let {level, currentXp, totalXp, gold} = snapshot;
+        const {level, currentXp, totalXp, gold} = snapshot;
 
         // 已达最大等级 (10 为上限)
         if (level >= 10 || totalXp <= 0) return;
@@ -2901,10 +2848,7 @@ export class StrategyService {
             // 2) 如果没有核心装可做：把背包里的装备尽快"合理地"挂出去（保前四：即时战力）
             if (!actionTaken) {
                 // 2.1 优先选择一个"基础散件"（formula 为空）；没有散件就随便取一个可穿戴装备
-                const component = equipments.find(e => {
-                    const data = TFT_16_EQUIP_DATA[e.name as EquipKey];
-                    return data && (data.formula ?? "") === "";
-                });
+                const component = equipments.find(e => strategyDataHub.isBaseComponentEquipment(e.name));
 
                 const itemToEquip = component?.name ?? equipments[0].name;
 
@@ -2987,17 +2931,16 @@ export class StrategyService {
      * @returns 如果可以合成，返回两个散件的名称；否则返回 null
      */
     private checkSynthesis(targetItemName: string, bag: Map<string, number>): { component1: string, component2: string } | null {
-        const targetEquip = TFT_16_EQUIP_DATA[targetItemName as EquipKey];
+        const targetEquip = strategyDataHub.getEquipmentDefinition(targetItemName);
         if (!targetEquip || !targetEquip.formula) return null;
 
         // 解析配方 ID
         const [id1, id2] = targetEquip.formula.split(',');
         if (!id1 || !id2) return null;
 
-        // 将 ID 转换为名称 (需要遍历所有装备数据查找，性能稍低但数据量小没问题)
-        // 优化：可以预先建立 ID -> Name 的映射，但这里为了简单直接查找
-        const name1 = this.findEquipNameById(id1);
-        const name2 = this.findEquipNameById(id2);
+        // 将 ID 转换为名称
+        const name1 = strategyDataHub.getEquipmentNameById(id1);
+        const name2 = strategyDataHub.getEquipmentNameById(id2);
 
         if (!name1 || !name2) return null;
 
@@ -3014,18 +2957,6 @@ export class StrategyService {
         }
 
         return null;
-    }
-
-    /**
-     * 根据 ID 查找装备名称
-     */
-    private findEquipNameById(id: string): string | undefined {
-        for (const key in TFT_16_EQUIP_DATA) {
-            if (TFT_16_EQUIP_DATA[key].equipId === id) {
-                return TFT_16_EQUIP_DATA[key].name;
-            }
-        }
-        return undefined;
     }
 
     /**
@@ -3113,6 +3044,7 @@ export class StrategyService {
         // 点击间隔（毫秒）
         const clickInterval = 2000;
 
+        // eslint-disable-next-line no-constant-condition
         while (true) {
             // 检查是否已经进入下一个回合（stageText 变化说明选秀结束）
             if (gameStageMonitor.stageText !== entryStageText) {
@@ -3557,14 +3489,14 @@ export class StrategyService {
         gameStateManager.updateEquipments(equipments);
     }
 
-    /**
-     * 从屏幕重新识别并更新备战席状态
-     * @description 卖棋子后调用，重新识别备战席棋子并更新到 GameStateManager
-     */
-    private async updateBenchStateFromScreen(): Promise<void> {
-        const benchUnits = await tftOperator.getBenchInfo();
-        gameStateManager.updateBenchUnits(benchUnits);
-    }
+    // /**
+    //  * 从屏幕重新识别并更新备战席状态
+    //  * @description 卖棋子后调用，重新识别备战席棋子并更新到 GameStateManager
+    //  */
+    // private async updateBenchStateFromScreen(): Promise<void> {
+    //     const benchUnits = await tftOperator.getBenchInfo();
+    //     gameStateManager.updateBenchUnits(benchUnits);
+    // }
 
     /**
      * 重置策略服务状态

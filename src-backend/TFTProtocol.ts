@@ -140,31 +140,37 @@ export const androidDetailChampionNameRegion = {
 // 安卓真机商店卡牌中的名称区域（基于 2026-03-15 真机录屏校准）
 export const androidShopSlotNameRegions = {
     SLOT_1: {
-        leftTop: { x: 0.250, y: 0.326 },
-        rightBottom: { x: 0.322, y: 0.383 }
+        leftTop: { x: 0.135, y: 0.350 },
+        rightBottom: { x: 0.225, y: 0.405 }
     },
     SLOT_2: {
-        leftTop: { x: 0.385, y: 0.323 },
-        rightBottom: { x: 0.478, y: 0.387 }
+        leftTop: { x: 0.305, y: 0.350 },
+        rightBottom: { x: 0.420, y: 0.405 }
     },
     SLOT_3: {
-        leftTop: { x: 0.525, y: 0.323 },
-        rightBottom: { x: 0.617, y: 0.387 }
+        leftTop: { x: 0.480, y: 0.350 },
+        rightBottom: { x: 0.550, y: 0.405 }
     },
     SLOT_4: {
-        leftTop: { x: 0.663, y: 0.323 },
-        rightBottom: { x: 0.778, y: 0.387 }
+        leftTop: { x: 0.655, y: 0.350 },
+        rightBottom: { x: 0.735, y: 0.405 }
     },
     SLOT_5: {
-        leftTop: { x: 0.808, y: 0.326 },
-        rightBottom: { x: 0.873, y: 0.383 }
+        leftTop: { x: 0.825, y: 0.350 },
+        rightBottom: { x: 0.900, y: 0.405 }
     },
 }
 
 // 安卓真机 HUD 金币数字区域（基于 2026-03-15 真机录屏校准）
 export const androidHudGoldTextRegion = {
-    leftTop: { x: 0.9019, y: 0.7833 },
-    rightBottom: { x: 0.9577, y: 0.9125 }
+    leftTop: { x: 0.6500, y: 0.0000 },
+    rightBottom: { x: 0.7000, y: 0.0550 }
+}
+
+// 安卓真机商店打开时右下角金币数字区域
+export const androidHudBottomGoldTextRegion = {
+    leftTop: { x: 0.9100, y: 0.8500 },
+    rightBottom: { x: 0.9850, y: 0.9700 }
 }
 
 // 安卓真机 HUD 经验文本区域（基于 2026-03-15 真机录屏校准）
@@ -606,8 +612,9 @@ export const androidGameStageDisplayNormal = {
 }
 
 export const androidGameStageDisplayShopOpen = {
-    leftTop: { x: 0.330, y: 0.000 },
-    rightBottom: { x: 0.430, y: 0.060 }
+    leftTop: { x: 0.310, y: 0.000 },   // shifted left: shop UI compresses topbar, stage text drifts leftward
+    rightBottom: { x: 0.470, y: 0.080 } // wider: titlebar-shift and shop-open-wide variants in voting() handle this,
+    // but the wider base crop reduces reliance on fallback scan for standard shop-open frames
 }
 
 //  发条鸟的战斗阶段，布局跟其他的都不一样，因为发条鸟一个大阶段有10场（百分比形式）
@@ -898,4 +905,80 @@ export interface TeamComposition {
     earlyGame: LineupUnit[];
     midGame: LineupUnit[];
     lateGame: LineupUnit[];
+}
+
+// ==========================================
+// 多分辨率支持
+// ==========================================
+
+/** 基准分辨率（所有百分比坐标的参考基准） */
+export const BASE_RESOLUTION = { width: 1024, height: 768 };
+
+/** 支持的分辨率列表 */
+export type SupportedResolution = 
+    | { width: 960; height: 540; name: "720p" }
+    | { width: 1024; height: 768; name: "base" }
+    | { width: 1920; height: 1080; name: "1080p" }
+    | { width: 2560; height: 1440; name: "1440p" };
+
+/**
+ * 将百分比坐标区域转换为目标分辨率的像素区域
+ * 
+ * 所有 region 定义使用百分比坐标（0-1），此函数负责转换为实际像素。
+ * 
+ * @param region 百分比坐标区域 { leftTop: {x, y}, rightBottom: {x, y} }
+ * @param targetRes 目标分辨率
+ * @returns 像素坐标区域
+ * 
+ * @example
+ * const region = { leftTop: { x: 0.25, y: 0.01 }, rightBottom: { x: 0.42, y: 0.035 } };
+ * const pixelRegion = scaleRegionToResolution(region, { width: 1920, height: 1080 });
+ * // => { leftTop: { x: 480, y: 10.8 }, rightBottom: { x: 806.4, y: 37.8 } }
+ */
+export function scaleRegionToResolution(
+    region: { leftTop: { x: number; y: number }; rightBottom: { x: number; y: number } },
+    targetRes: { width: number; height: number }
+): { leftTop: { x: number; y: number }; rightBottom: { x: number; y: number } } {
+    return {
+        leftTop: {
+            x: Math.round(region.leftTop.x * targetRes.width),
+            y: Math.round(region.leftTop.y * targetRes.height),
+        },
+        rightBottom: {
+            x: Math.round(region.rightBottom.x * targetRes.width),
+            y: Math.round(region.rightBottom.y * targetRes.height),
+        },
+    };
+}
+
+/**
+ * 将百分比坐标点转换为目标分辨率的像素坐标
+ * 
+ * @param point 百分比坐标点 { x, y }
+ * @param targetRes 目标分辨率
+ * @returns 像素坐标点
+ */
+export function scalePointToResolution(
+    point: { x: number; y: number },
+    targetRes: { width: number; height: number }
+): { x: number; y: number } {
+    return {
+        x: Math.round(point.x * targetRes.width),
+        y: Math.round(point.y * targetRes.height),
+    };
+}
+
+/**
+ * 获取分辨率的缩放因子（相对于基准分辨率）
+ * 
+ * @param targetRes 目标分辨率
+ * @returns 缩放因子 { scaleX, scaleY }
+ */
+export function getResolutionScaleFactor(
+    targetRes: { width: number; height: number }
+): { scaleX: number; scaleY: number } {
+    return {
+        scaleX: targetRes.width / BASE_RESOLUTION.width,
+        scaleY: targetRes.height / BASE_RESOLUTION.height,
+    };
 }

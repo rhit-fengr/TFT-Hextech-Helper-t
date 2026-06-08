@@ -1,0 +1,35 @@
+{
+	"isFirstLaunch": true,
+	"tftMode": "NORMAL",
+	"logMode": "SIMPLE",
+	"logAutoCleanThreshold": 500,
+	"toggleHotkeyAccelerator": "F1",
+	"stopAfterGameHotkeyAccelerator": "F2",
+	"showOverlay": true,
+	"showDebugPage": false,
+	"window": {
+		"bounds": {
+			"x": -74,
+			"y": 155,
+			"width": 1029,
+			"height": 605
+		},
+		"isMaximized": false
+	},
+	"selectedLineupIds": [],
+	"statistics": {
+		"totalGamesPlayed": 0
+	},
+	"queueRandomDelay": {
+		"enabled": false,
+		"minSeconds": 0,
+		"maxSeconds": 0
+	},
+	"queueTimeout": {
+		"enabled": false,
+		"minutes": 5
+	},
+	"analyticsClientId": "6c644585-a0c4-4363-a039-fb003aef52a1",
+	"gameRegion": "NA",
+	"gameClient": "ANDROID"
+}
