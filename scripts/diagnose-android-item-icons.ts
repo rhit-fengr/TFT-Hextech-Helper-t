@@ -251,7 +251,8 @@ function formatKotlinFloat(value: number): string {
 }
 
 function sanitizeFileName(value: string): string {
-    return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_").replace(/\s+/g, "_");
+    // eslint-disable-next-line no-control-regex
+    return value.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").replace(/\s+/g, "_");
 }
 
 async function runCli(): Promise<void> {

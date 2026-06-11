@@ -52,6 +52,8 @@ coverage/
 # Generated Android/OCR artifacts and large local recordings
 reports/
 tmp/
+tmp-*.png
+tmp-*.xml
 examples/recordings/*.mp4
 examples/recordings/derived/*/frames/
 examples/recordings/derived/*/crops/
