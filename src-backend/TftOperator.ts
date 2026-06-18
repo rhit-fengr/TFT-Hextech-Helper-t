@@ -936,6 +936,55 @@ class TftOperator {
     }
 
     /**
+     * 获取当前商店的所有棋子信息（快速版）
+     * @description 使用模板匹配直接识别，跳过 OCR，并行处理所有槽位
+     * @returns 商店中的棋子数组 (空槽位为 null)
+     */
+    public async getShopInfoFast(): Promise<(TFTUnit | null)[]> {
+        if (!templateLoader.isReady()) {
+            logger.warn("[TftOperator] 模板未加载，回退到 OCR 模式");
+            return this.getShopInfo({ templateFallback: true });
+        }
+
+        logger.info("[TftOperator] 快速扫描商店 (模板匹配模式)...");
+        const chessData = this.getActiveChessData();
+
+        // 并行处理所有 5 个槽位
+        const slotPromises = Array.from({ length: 5 }, async (_, i) => {
+            const slotIndex = i + 1;
+            const slotKey = `SLOT_${slotIndex}` as keyof typeof shopSlotNameRegions;
+            const region = this.getShopNameAbsoluteRegion(slotKey);
+
+            try {
+                const targetMat = await screenCapture.captureRegionAsMat(region);
+                try {
+                    const matchResult = templateMatcher.matchChampionDetailed(targetMat);
+                    if (matchResult && matchResult.name && matchResult.name !== "empty") {
+                        const unit = chessData[matchResult.name];
+                        if (unit) {
+                            logger.debug(
+                                `[商店槽位 ${slotIndex}] 模板匹配: ${unit.displayName} ` +
+                                `(${(matchResult.confidence * 100).toFixed(1)}%)`
+                            );
+                            return unit;
+                        }
+                    }
+                } finally {
+                    targetMat.delete();
+                }
+            } catch (error: any) {
+                logger.warn(`[商店槽位 ${slotIndex}] 识别失败: ${error.message}`);
+            }
+            return null;
+        });
+
+        const results = await Promise.all(slotPromises);
+        const successCount = results.filter((r) => r !== null).length;
+        logger.info(`[TftOperator] 快速扫描完成: ${successCount}/5 个槽位识别成功`);
+        return results;
+    }
+
+    /**
      * 获取当前装备栏信息
      * @description 扫描装备栏所有槽位，通过模板匹配识别装备
      * @returns 识别到的装备数组

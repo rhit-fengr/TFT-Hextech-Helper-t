@@ -1042,12 +1042,12 @@ export class StrategyService {
         const previousLevel = gameStateManager.getLevel();
 
         // 1. 先并行执行不需要鼠标操作的识别任务
-        //    - getShopInfo: 只需要截图 + OCR，不操作鼠标
+        //    - getShopInfoFast: 只需要截图 + 模板匹配，不操作鼠标（快速版）
         //    - getEquipInfo: 只需要截图 + 模板匹配，不操作鼠标
         //    - getLevelInfo: 只需要截图 + OCR，不操作鼠标
         //    - getCoinCount: 只需要截图 + OCR，不操作鼠标
         const [shopUnits, equipments, levelInfo, gold] = await Promise.all([
-            tftOperator.getShopInfo(),
+            tftOperator.getShopInfoFast(),
             tftOperator.getEquipInfo(),
             tftOperator.getLevelInfo(),
             tftOperator.getCoinCount(),
@@ -3466,9 +3466,9 @@ export class StrategyService {
      *              不假设刷新扣多少钱，因为某些海克斯强化会让刷新免费或打折
      */
     private async updateShopStateFromScreen(): Promise<void> {
-        // 并行识别商店和金币（两者都只需要截图+OCR，不冲突）
+        // 并行识别商店和金币（两者都只需要截图，不冲突）
         const [newShopUnits, newGold]: [(TFTUnit | null)[], number | null] = await Promise.all([
-            tftOperator.getShopInfo(),
+            tftOperator.getShopInfoFast(),
             tftOperator.getCoinCount()
         ]);
 

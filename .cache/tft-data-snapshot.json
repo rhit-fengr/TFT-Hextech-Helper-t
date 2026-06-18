@@ -1,12 +1,12 @@
 {
-  "fetchedAt": "2026-06-06T20:14:09.082Z",
+  "fetchedAt": "2026-06-18T22:40:49.408Z",
   "source": "remote",
   "versions": {
-    "chess": "16.11",
-    "equip": "16.11",
-    "race": "16.11",
-    "job": "16.11",
-    "hex": "16.11"
+    "chess": "16.12",
+    "equip": "16.12",
+    "race": "16.12",
+    "job": "16.12",
+    "hex": "16.12"
   },
   "champions": [
     {
@@ -2845,12 +2845,6 @@
       "name": "阿狸的光环",
       "englishName": "TFT17_Item_Artifact_AhriArtifact",
       "imageUrl": "https://game.gtimg.cn/images/lol/act/img/tft/equip/92122.png"
-    },
-    {
-      "id": "92123",
-      "name": "艾克的耐心",
-      "englishName": "TFT17_Item_Artifact_EkkoArtifact",
-      "imageUrl": "https://game.gtimg.cn/images/lol/act/img/tft/equip/92123.png"
     },
     {
       "id": "92124",

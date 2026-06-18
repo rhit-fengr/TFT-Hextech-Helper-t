@@ -17,6 +17,36 @@ function countOwnedUnits(units: ObservedUnit[]): Map<string, number> {
     return owned;
 }
 
+/**
+ * 按星级统计棋子数量
+ * @returns Map<棋子名, Map<星级, 数量>>
+ */
+function countOwnedUnitsByStar(units: ObservedUnit[]): Map<string, Map<number, number>> {
+    const owned = new Map<string, Map<number, number>>();
+    for (const unit of units) {
+        if (!owned.has(unit.name)) {
+            owned.set(unit.name, new Map());
+        }
+        const starMap = owned.get(unit.name)!;
+        starMap.set(unit.star, (starMap.get(unit.star) ?? 0) + 1);
+    }
+    return owned;
+}
+
+/**
+ * 计算还需要多少个棋子可以升星
+ * @param star 当前星级
+ * @param count 当前数量
+ * @returns 还需要多少个才能升到下一星
+ */
+function copiesNeededForStarUp(star: number, count: number): number {
+    // 1星 → 2星：需要3个1星
+    // 2星 → 3星：需要3个2星
+    if (star >= 3) return 0; // 已经是3星
+    const needed = 3 - count;
+    return Math.max(0, needed);
+}
+
 function parseStage(stageText: string): ParsedStage | null {
     const match = stageText.match(/^(\d+)-(\d+)$/);
     if (!match) {
@@ -468,6 +498,7 @@ export class RuleBasedDecisionEngine implements DecisionEngine {
         }
 
         const ownedCounts = countOwnedUnits([...state.bench, ...state.board]);
+        const ownedByStar = countOwnedUnitsByStar([...state.bench, ...state.board]);
         const highestTargetPairCount = getHighestTargetPairCount(ownedCounts, targetNames);
         let spendableGold = state.gold;
         const softBudget = Math.max(0, state.gold - economyFloor);
@@ -492,50 +523,76 @@ export class RuleBasedDecisionEngine implements DecisionEngine {
             const isTarget = targetNames.has(offer.unit.name);
             const pairCount = ownedCounts.get(offer.unit.name) ?? 0;
             const canUpgradeSoon = pairCount >= 2;
+            
+            // 计算升星进度：检查该棋子在商店中的星级
+            const shopUnitStar = offer.unit.star || 1;
+            const starMap = ownedByStar.get(offer.unit.name);
+            const sameStarCount = starMap?.get(shopUnitStar) ?? 0;
+            const copiesNeeded = copiesNeededForStarUp(shopUnitStar, sameStarCount);
+            const isOneCopyFromStarUp = copiesNeeded === 1;
+            const isTwoCopiesFromStarUp = copiesNeeded === 2;
+            
             const onStabilizeRound = isKeyRound(parsed, 3, 2) || isKeyRound(parsed, 4, 2);
             const willingToSpend =
                 spent + offer.cost <= softBudget ||
                 mustStabilize ||
                 onStabilizeRound ||
-                canUpgradeSoon;
+                canUpgradeSoon ||
+                isOneCopyFromStarUp;
 
             if (!willingToSpend) {
                 continue;
             }
 
-            if (!isTarget && !canUpgradeSoon && offer.cost > 2 && context.strategyPreset !== "FAST8") {
+            if (!isTarget && !canUpgradeSoon && !isOneCopyFromStarUp && offer.cost > 2 && context.strategyPreset !== "FAST8") {
                 continue;
             }
 
-            if (!isTarget && !canUpgradeSoon && context.strategyPreset === "FAST8" && (offer.cost ?? 0) <= 2) {
+            if (!isTarget && !canUpgradeSoon && !isOneCopyFromStarUp && context.strategyPreset === "FAST8" && (offer.cost ?? 0) <= 2) {
                 continue;
             }
 
-            if (isTarget && staleTargetPairPivot && !canUpgradeSoon) {
+            if (isTarget && staleTargetPairPivot && !canUpgradeSoon && !isOneCopyFromStarUp) {
                 continue;
             }
 
-            if (isTarget && dropLowValueChase && !canUpgradeSoon && (offer.cost ?? 0) <= 3) {
+            if (isTarget && dropLowValueChase && !canUpgradeSoon && !isOneCopyFromStarUp && (offer.cost ?? 0) <= 3) {
                 continue;
             }
 
-            // 使用融合评分调整优先级
-            const basePriority = canUpgradeSoon ? 95 : isTarget ? 90 : 72;
+            // 使用融合评分调整优先级，升星进度给予额外加成
+            let basePriority = 72;
+            let reason = `补充中期过渡牌 ${offer.unit.name}`;
+            
+            if (isOneCopyFromStarUp) {
+                // 差1个升星 - 最高优先级
+                basePriority = 98;
+                reason = `${offer.unit.name} 差1个升${shopUnitStar + 1}星，立即购买！`;
+            } else if (canUpgradeSoon) {
+                // 已有2个，商店出现第3个
+                basePriority = 95;
+                reason = `检测到 ${offer.unit.name} 可合成升星，优先补对子`;
+            } else if (isTwoCopiesFromStarUp) {
+                // 差2个升星 - 较高优先级
+                basePriority = 88;
+                reason = `${offer.unit.name} 差2个升${shopUnitStar + 1}星，优先购买`;
+            } else if (isTarget) {
+                basePriority = 90;
+                reason = `目标棋子 ${offer.unit.name} 出现在商店，按阵容节奏补牌`;
+            }
+            
             const fusionBoost = isTarget ? Math.round((bestFusionScore - 50) / 10) : 0;
             const adjustedPriority = Math.min(100, basePriority + fusionBoost);
             
             addPlan(
                 "BUY",
                 adjustedPriority,
-                canUpgradeSoon
-                    ? `检测到 ${offer.unit.name} 可合成升星，优先补对子`
-                    : isTarget
-                        ? `目标棋子 ${offer.unit.name} 出现在商店，按阵容节奏补牌`
-                        : `补充中期过渡牌 ${offer.unit.name}`,
+                reason,
                 {
                     slot: offer.slot,
                     champion: offer.unit.name,
                     cost: offer.cost,
+                    starProgress: `${sameStarCount + 1}/3`,
                 }
             );
 

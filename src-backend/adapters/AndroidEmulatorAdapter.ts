@@ -20,7 +20,6 @@ import type { ActionPlan, AdapterHealth, GameAdapter, ObservedState, PlatformTar
 import { detectAndroidLootOrbsFromScreenshot } from "../utils/AndroidLootOrbDetector";
 import {
     shouldReadShopDuringAndroidObserve,
-    shouldUseShopTemplateFallbackDuringAndroidObserve,
 } from "./AndroidObservePolicy";
 import { isLikelyOpponentBoardViewForHud, isLikelyOpponentBoardViewForLoot } from "./AndroidOpponentBoardView";
 import { buildAndroidSafeObserveAutoDeploySwipes } from "./AndroidAutoDeployPoints";
@@ -177,7 +176,6 @@ export class AndroidEmulatorAdapter implements GameAdapter {
         }
 
         const readShop = shouldReadShopDuringAndroidObserve(this.options);
-        const useShopTemplateFallback = shouldUseShopTemplateFallbackDuringAndroidObserve(this.options);
         const stageResult = await this.readConfirmedStage();
         const levelInfo = await tftOperator.getLevelInfo();
         const gold = await tftOperator.getCoinCount();
@@ -190,9 +188,7 @@ export class AndroidEmulatorAdapter implements GameAdapter {
             logger.debug(`[AndroidEmulatorAdapter] 沿用上一帧安卓金币: ${effectiveGold}`);
         }
         const shopUnits = readShop
-            ? await this.readObservedComponent("shop", () => tftOperator.getShopInfo({
-                templateFallback: useShopTemplateFallback,
-            }), [])
+            ? await this.readObservedComponent("shop", () => tftOperator.getShopInfoFast(), [])
             : [];
         const lootOrbs = await this.readLootOrbs(stageResult, effectiveLevelInfo, effectiveGold);
         const benchUnits = this.options.safeObserve

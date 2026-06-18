@@ -1,5 +1,5 @@
 {
-	"isFirstLaunch": true,
+	"isFirstLaunch": false,
 	"tftMode": "NORMAL",
 	"logMode": "SIMPLE",
 	"logAutoCleanThreshold": 500,
