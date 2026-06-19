@@ -137,27 +137,27 @@ export const androidDetailChampionNameRegion = {
     rightBottom: { x: 0.920, y: 0.250 }
 }
 
-// 安卓真机商店卡牌中的名称区域（基于 2026-06-18 录屏校准）
+// 安卓真机商店卡牌中的名称区域（录屏校准：卡牌顶部y≈12-267，名字文字在底部y≈230-260）
 export const androidShopSlotNameRegions = {
     SLOT_1: {
-        leftTop: { x: 0.145, y: 0.160 },
-        rightBottom: { x: 0.220, y: 0.230 }
+        leftTop: { x: 0.145, y: 0.305 },
+        rightBottom: { x: 0.220, y: 0.375 }
     },
     SLOT_2: {
-        leftTop: { x: 0.260, y: 0.160 },
-        rightBottom: { x: 0.345, y: 0.230 }
+        leftTop: { x: 0.260, y: 0.305 },
+        rightBottom: { x: 0.345, y: 0.375 }
     },
     SLOT_3: {
-        leftTop: { x: 0.390, y: 0.160 },
-        rightBottom: { x: 0.475, y: 0.230 }
+        leftTop: { x: 0.390, y: 0.305 },
+        rightBottom: { x: 0.475, y: 0.375 }
     },
     SLOT_4: {
-        leftTop: { x: 0.525, y: 0.160 },
-        rightBottom: { x: 0.595, y: 0.230 }
+        leftTop: { x: 0.525, y: 0.305 },
+        rightBottom: { x: 0.595, y: 0.375 }
     },
     SLOT_5: {
-        leftTop: { x: 0.650, y: 0.160 },
-        rightBottom: { x: 0.720, y: 0.230 }
+        leftTop: { x: 0.650, y: 0.305 },
+        rightBottom: { x: 0.720, y: 0.375 }
     },
 }
 
