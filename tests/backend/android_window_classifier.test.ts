@@ -1994,6 +1994,28 @@ test("android window classifier keeps star-god side panel out of lobby recovery"
     }
 });
 
+test("android window classifier keeps live-final unit detail panel in live content", async () => {
+    for (const frame of ["tick-00009-unknown.png", "tick-00010-lobby.png"]) {
+        const screenshot = await fs.readFile(
+            path.resolve(
+                process.cwd(),
+                "reports",
+                "live-final-20260618-215736",
+                frame
+            )
+        );
+
+        const result = await classifyAndroidWindowScreenshot(screenshot);
+        const observation = normalizeAndroidForegroundObservation(result);
+
+        assert.equal(result.state, "LIVE_CONTENT", frame);
+        assert.equal(observation.state, "LIVE_CONTENT", frame);
+        assert.equal(result.startQueuePoint, undefined, frame);
+        assert.ok((result.liveHudGoldSignalRatio ?? 0) > 0.16, frame);
+        assert.ok((result.augmentCardPurpleRatio ?? 0) > 0.50, frame);
+    }
+});
+
 test("android window classifier keeps live HUD priority over large blue shop/start regions", async () => {
     const screenshot = await fs.readFile(
         path.resolve(

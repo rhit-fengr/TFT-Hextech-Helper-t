@@ -116,3 +116,19 @@ test("android loot orb detector ignores ordinary shop and board colors", async (
         assert.equal(orbs.length, 0, fixtureName);
     }
 });
+
+test("android loot orb detector finds live-final shop-open question orbs", async () => {
+    const screenshot = await fs.readFile(path.resolve(
+        process.cwd(),
+        "reports",
+        "live-final-20260618-215736",
+        "current-diagnose.png"
+    ));
+
+    const orbs = await detectAndroidLootOrbsFromScreenshot(screenshot);
+
+    assert.ok(orbs.length >= 2);
+    assert.ok(orbs.every((orb) => orb.type === "blue"));
+    assert.ok(orbs.every((orb) => orb.x >= 0 && orb.x <= 1 && orb.y >= 0 && orb.y <= 1));
+    assert.ok(orbs.some((orb) => orb.x > 0.70 && orb.y > 0.50));
+});

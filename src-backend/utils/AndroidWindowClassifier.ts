@@ -1593,6 +1593,13 @@ export async function classifyAndroidWindowScreenshot(
             liveHudScoreSignalRatio > 0.05 &&
             progressDarkRatio < 0.20
         ) ||
+        (
+            liveHudGoldSignalRatio > 0.16 &&
+            liveHudScoreSignalRatio > 0.015 &&
+            queueStatusGoldRatio > 0.045 &&
+            augmentCardPurpleRatio > 0.50 &&
+            progressDarkRatio < 0.05
+        ) ||
         liveHudScoreSignalRatio > 0.10 ||
         (
             liveHudGoldSignalRatio > 0.10 &&

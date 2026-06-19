@@ -68,6 +68,22 @@ function parseNormalizedPoint(rawX: unknown, rawY: unknown): SimplePoint | null 
     return { x, y };
 }
 
+async function normalizeAndroidTapPoint(point: SimplePoint): Promise<SimplePoint> {
+    if (point.x >= 0 && point.x <= 1 && point.y >= 0 && point.y <= 1) {
+        return point;
+    }
+
+    const frameSize = await androidAdbCapture.getFrameSize();
+    if (!frameSize || frameSize.width <= 0 || frameSize.height <= 0) {
+        return point;
+    }
+
+    return {
+        x: Math.max(0, Math.min(1, point.x / frameSize.width)),
+        y: Math.max(0, Math.min(1, point.y / frameSize.height)),
+    };
+}
+
 function parseBenchIndex(value: unknown): number | null {
     if (typeof value === "string") {
         const match = value.match(/^SLOT_(\d+)$/);
@@ -358,25 +374,21 @@ export class AndroidEmulatorAdapter implements GameAdapter {
         gold?: number | null
     ): Promise<LootOrb[]> {
         try {
-            const templateOrbs = await tftOperator.getLootOrbs();
-            if (templateOrbs.length > 0) {
-                return templateOrbs;
-            }
-
             if (stageResult && this.shouldSkipVisualLootFallback(stageResult, levelInfo ?? null, gold ?? null)) {
                 logger.info("[AndroidEmulatorAdapter] 开局/选秀疑似帧跳过战利品视觉兜底");
                 return [];
             }
 
             const screenshot = await androidAdbCapture.capturePng();
-            if (!screenshot) {
-                return [];
+            if (screenshot) {
+                const visualOrbs = await detectAndroidLootOrbsFromScreenshot(screenshot);
+                if (visualOrbs.length > 0) {
+                    logger.info(`[AndroidEmulatorAdapter] 视觉兜底检测到 ${visualOrbs.length} 个战利品球`);
+                    return visualOrbs;
+                }
             }
-            const visualOrbs = await detectAndroidLootOrbsFromScreenshot(screenshot);
-            if (visualOrbs.length > 0) {
-                logger.info(`[AndroidEmulatorAdapter] 视觉兜底检测到 ${visualOrbs.length} 个战利品球`);
-            }
-            return visualOrbs;
+
+            return [];
         } catch (error: unknown) {
             logger.warn(`[AndroidEmulatorAdapter] 战利品球检测失败: ${error instanceof Error ? error.message : String(error)}`);
             return [];
@@ -413,7 +425,8 @@ export class AndroidEmulatorAdapter implements GameAdapter {
         logger.info(`[AndroidEmulatorAdapter] PICK_LOOT 准备拾取 ${sortedOrbs.length}/${lootOrbs.length} 个战利品球`);
         for (const orb of sortedOrbs) {
             logger.info(`[AndroidEmulatorAdapter] PICK_LOOT ${orb.type} (${orb.x}, ${orb.y})`);
-            const tapped = await androidAdbCapture.tapRelative({ x: orb.x, y: orb.y });
+            const tapPoint = await normalizeAndroidTapPoint({ x: orb.x, y: orb.y });
+            const tapped = await androidAdbCapture.tapRelative(tapPoint);
             if (!tapped) {
                 await mouseController.clickAt({ x: orb.x, y: orb.y }, MouseButtonType.RIGHT);
             }
