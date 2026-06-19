@@ -700,14 +700,18 @@ export class RuleBasedDecisionEngine implements DecisionEngine {
             }
         }
 
-        if (state.items.length > 0 && state.board.length > 0) {
-            const carry = chooseCarryUnit(state.board, targetNames);
-            if (carry) {
-                addPlan("EQUIP", 58, `优先将装备补给主力单位 ${carry.name}`, {
-                    itemIndex: 0,
-                    itemName: state.items[0],
-                    toBoard: carry.location ?? "AUTO_SLOT",
-                });
+        // 装备：优先上棋盘主力；棋盘为空时上备战席最强单位
+        if (state.items.length > 0) {
+            const carryTargets = state.board.length > 0 ? state.board : state.bench;
+            if (carryTargets.length > 0) {
+                const carry = chooseCarryUnit(carryTargets, targetNames);
+                if (carry) {
+                    addPlan("EQUIP", 58, `优先将装备补给${state.board.length > 0 ? "棋盘" : "备战席"}主力单位 ${carry.name}`, {
+                        itemIndex: 0,
+                        itemName: state.items[0],
+                        toBoard: carry.location ?? "AUTO_SLOT",
+                    });
+                }
             }
         }
 
