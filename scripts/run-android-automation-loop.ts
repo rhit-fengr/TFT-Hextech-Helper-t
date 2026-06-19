@@ -397,7 +397,7 @@ async function main(): Promise<void> {
     let lastForegroundSnapshotTick = -Infinity;
     let consecutiveForegroundSkips = 0;
     let foregroundProgressState = createInitialAndroidForegroundProgressState();
-    let gameOverDetected = false;
+    let gameOverCount = 0;
 
     for (let tick = 0; tick < args.ticks; tick += 1) {
         process.stderr.write(`[android:auto] tick ${tick + 1}/${args.ticks} start\n`);
@@ -460,32 +460,18 @@ async function main(): Promise<void> {
                             );
                         }
                         if (observation.state === "QUEUE") {
-                            // 结算页启动时识别到 GAME_OVER → 不排队，直接退出
-                            if (gameOverDetected) {
-                                process.stderr.write(
-                                    `[android:auto] GAME_OVER 后识别到 QUEUE，跳过排队\n`
-                                );
-                            } else {
-                                foregroundProgressState = await fastPollQueueForeground(
-                                    snapshotDir,
-                                    tick + 1,
-                                    foregroundProgressState
-                                );
-                            }
-                        }
-                        // GAME_OVER 检测：第一次进入 GAME_OVER 时标记，停止 loop
-                        if (observation.state === "GAME_OVER" && !gameOverDetected) {
-                            gameOverDetected = true;
-                            process.stderr.write(
-                                `[android:auto] GAME_OVER detected at tick ${tick + 1}; will stop after exit attempt\n`
+                            foregroundProgressState = await fastPollQueueForeground(
+                                snapshotDir,
+                                tick + 1,
+                                foregroundProgressState
                             );
                         }
-                        // 连续 GAME_OVER → 停止循环
-                        if (gameOverDetected && observation.state !== "LIVE_CONTENT" && tick > 2) {
+                        // GAME_OVER 统计（不停止，自动重开）
+                        if (observation.state === "GAME_OVER") {
+                            gameOverCount += 1;
                             process.stderr.write(
-                                `[android:auto] stopping after game over at tick ${tick + 1}\n`
+                                `[android:auto] GAME_OVER #${gameOverCount} at tick ${tick + 1}，自动退出并开始下一局\n`
                             );
-                            break;
                         }
                     }
                 } catch (error) {
