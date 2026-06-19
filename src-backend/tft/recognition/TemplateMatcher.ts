@@ -356,8 +356,8 @@ export class TemplateMatcher {
             return false;
         }
 
-        const relaxedThreshold = 0.30;
-        const relaxedMargin = 0.03;
+        const relaxedThreshold = 0.15;
+        const relaxedMargin = 0.01;
         return (
             candidate.confidence >= relaxedThreshold &&
             candidate.confidence - candidate.runnerUpConfidence >= relaxedMargin
