@@ -324,7 +324,7 @@ export class RuleBasedDecisionEngine implements DecisionEngine {
     /** 动作冷却：相同动作类型在 N 次 generatePlan 调用内不重复 */
     private readonly actionCooldowns = new Map<string, number>();
     private readonly ACTION_COOLDOWN_TICKS: Record<string, number> = {
-        PICK_AUGMENT: 3,
+        PICK_AUGMENT: 1,  // 减到 1 tick，加速增幅选择
         LEVEL_UP: 2,
         ROLL: 2,
         PICK_LOOT: 2,
@@ -521,6 +521,11 @@ export class RuleBasedDecisionEngine implements DecisionEngine {
         } else if (state.level < 5 && state.gold >= 30 && !plans.some(p => p.type === "LEVEL_UP")) {
             const count = Math.min(4, xpClicksToNextLevel(state, 2, 6));
             addPlan("LEVEL_UP", 113, `低等级 ${state.level} 但金币 ${state.gold}，补人口`, { count });
+        }
+        // 3-2 后强制升 6（即使金币不足也要尝试）
+        if (parsed && parsed.stage >= 3 && parsed.round >= 2 && state.level < 6 && !plans.some(p => p.type === "LEVEL_UP")) {
+            const count = Math.min(3, xpClicksToNextLevel(state, 1, 6));
+            addPlan("LEVEL_UP", 114, `3-2+ 仍仅 ${state.level} 级，强制升 6 避免崩盘`, { count });
         }
 
         const ownedCounts = countOwnedUnits([...state.bench, ...state.board]);
