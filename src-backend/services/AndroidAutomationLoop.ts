@@ -259,6 +259,9 @@ export class AndroidAutomationLoop {
     private timedOutAt = 0;
     private static readonly SETTLE_MS = 15000; // 超时后 15 秒自动恢复
 
+    /** Not Responding 期间积压的经济动作，恢复后补执行 */
+    private pendingEconomyActions: ActionPlan[] = [];
+
     constructor(options: AndroidAutomationLoopOptions = {}) {
         this.adapter = options.adapter ?? null;
         this.engine = options.engine ?? createDefaultDecisionEngine();
@@ -273,6 +276,22 @@ export class AndroidAutomationLoop {
         if (this.timedOutOperationActive && Date.now() - this.timedOutAt >= AndroidAutomationLoop.SETTLE_MS) {
             logger.info("[AndroidAutomationLoop] 超时恢复：settling 期结束，继续执行");
             this.timedOutOperationActive = false;
+        }
+
+        // Not Responding 恢复后补执行积压的经济动作
+        if (this.pendingEconomyActions.length > 0) {
+            const adapter = await this.getAdapter();
+            const healthResult = await this.runAdapterOperation("health check", () => adapter.healthCheck());
+            if (healthResult.ok) {
+                const plansToRetry = this.pendingEconomyActions;
+                this.pendingEconomyActions = [];
+                logger.info(`[AndroidAutomationLoop] 恢复后补执行 ${plansToRetry.length} 个积压经济动作`);
+                try {
+                    await adapter.execute(plansToRetry);
+                } catch (error: unknown) {
+                    logger.warn(`[AndroidAutomationLoop] 补执行失败: ${error instanceof Error ? error.message : String(error)}`);
+                }
+            }
         }
 
         const adapter = await this.getAdapter();
@@ -373,6 +392,14 @@ export class AndroidAutomationLoop {
 
         const healthResult = await this.runAdapterOperation("health check", () => adapter.healthCheck());
         if (!healthResult.ok) {
+            // Not Responding 时保存经济相关动作，恢复后补执行
+            if (executablePlans.some(p => p.type === "LEVEL_UP" || p.type === "ROLL")) {
+                const econPlans = executablePlans.filter(p => p.type === "LEVEL_UP" || p.type === "ROLL" || p.type === "BUY");
+                if (econPlans.length > 0) {
+                    this.pendingEconomyActions = econPlans;
+                    logger.info(`[AndroidAutomationLoop] 保存 ${econPlans.length} 个经济动作待恢复后执行`);
+                }
+            }
             return this.buildSkippedResult("PAUSED", healthResult.reason);
         }
 

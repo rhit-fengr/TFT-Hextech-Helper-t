@@ -397,6 +397,7 @@ async function main(): Promise<void> {
     let lastForegroundSnapshotTick = -Infinity;
     let consecutiveForegroundSkips = 0;
     let foregroundProgressState = createInitialAndroidForegroundProgressState();
+    let gameOverDetected = false;
 
     for (let tick = 0; tick < args.ticks; tick += 1) {
         process.stderr.write(`[android:auto] tick ${tick + 1}/${args.ticks} start\n`);
@@ -464,6 +465,20 @@ async function main(): Promise<void> {
                                 tick + 1,
                                 foregroundProgressState
                             );
+                        }
+                        // GAME_OVER 检测：第一次进入 GAME_OVER 时标记，停止 loop
+                        if (observation.state === "GAME_OVER" && !gameOverDetected) {
+                            gameOverDetected = true;
+                            process.stderr.write(
+                                `[android:auto] GAME_OVER detected at tick ${tick + 1}; will stop after exit attempt\n`
+                            );
+                        }
+                        // 连续 GAME_OVER → 停止循环
+                        if (gameOverDetected && observation.state !== "LIVE_CONTENT" && tick > 2) {
+                            process.stderr.write(
+                                `[android:auto] stopping after game over at tick ${tick + 1}\n`
+                            );
+                            break;
                         }
                     }
                 } catch (error) {

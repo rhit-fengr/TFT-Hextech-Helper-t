@@ -514,6 +514,15 @@ export class RuleBasedDecisionEngine implements DecisionEngine {
             }
         }
 
+        // 兜底：金币异常堆积时强制升级（防止 Not Responding / 阶段误读导致经济空转）
+        if (state.level < 7 && state.gold >= 80 && !plans.some(p => p.type === "LEVEL_UP")) {
+            const count = Math.min(6, xpClicksToNextLevel(state, 4, 10));
+            addPlan("LEVEL_UP", 115, `金币 ${state.gold} 异常堆积且仅 ${state.level} 级，强制拉人口`, { count });
+        } else if (state.level < 5 && state.gold >= 30 && !plans.some(p => p.type === "LEVEL_UP")) {
+            const count = Math.min(4, xpClicksToNextLevel(state, 2, 6));
+            addPlan("LEVEL_UP", 113, `低等级 ${state.level} 但金币 ${state.gold}，补人口`, { count });
+        }
+
         const ownedCounts = countOwnedUnits([...state.bench, ...state.board]);
         const ownedByStar = countOwnedUnitsByStar([...state.bench, ...state.board]);
         const highestTargetPairCount = getHighestTargetPairCount(ownedCounts, targetNames);
