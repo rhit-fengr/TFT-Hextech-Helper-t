@@ -706,12 +706,21 @@ export class RuleBasedDecisionEngine implements DecisionEngine {
             if (carryTargets.length > 0) {
                 const carry = chooseCarryUnit(carryTargets, targetNames);
                 if (carry) {
+                    const targetBoardLocation = state.board.length > 0 && carry.location?.startsWith("R")
+                        ? carry.location
+                        : "R4_C4";
                     addPlan("EQUIP", 58, `优先将装备补给${state.board.length > 0 ? "棋盘" : "备战席"}主力单位 ${carry.name}`, {
                         itemIndex: 0,
                         itemName: state.items[0],
-                        toBoard: carry.location ?? "AUTO_SLOT",
+                        toBoard: targetBoardLocation,
                     });
                 }
+            } else if (state.target === "ANDROID_EMULATOR") {
+                addPlan("EQUIP", 58, "安卓安全观察未读取棋盘单位，但装备栏非空，先把装备补到默认主力站位", {
+                    itemIndex: 0,
+                    itemName: state.items[0],
+                    toBoard: "R4_C4",
+                });
             }
         }
 

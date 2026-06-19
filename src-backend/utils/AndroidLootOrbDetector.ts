@@ -20,7 +20,7 @@ interface PixelClass {
 const DETECT_WIDTH = 480;
 const BOARD_REGION = {
     left: 0.16,
-    top: 0.38,
+    top: 0.18,
     right: 0.86,
     bottom: 0.82,
 };

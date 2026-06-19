@@ -292,6 +292,13 @@ test("AndroidAutomationLoop filters shop-dependent actions when Android shop OCR
         ...before,
         currentXp: 6,
         gold: 91,
+        shop: [
+            { slot: 0, cost: null, unit: null },
+            { slot: 1, cost: 1, unit: { id: "mock", name: "测试", star: 1, cost: 1, items: [], traits: [] } },
+            { slot: 2, cost: null, unit: null },
+            { slot: 3, cost: null, unit: null },
+            { slot: 4, cost: null, unit: null },
+        ],
     });
     const adapter = new FakeAdapter([before, after]);
     const loop = new AndroidAutomationLoop({
@@ -304,7 +311,8 @@ test("AndroidAutomationLoop filters shop-dependent actions when Android shop OCR
 
     assert.equal(result.status, "EXECUTED");
     assert.equal(adapter.executeCalls.length, 1);
-    assert.deepEqual(adapter.executeCalls[0]?.map((action) => action.type), ["LEVEL_UP"]);
+    // 空商店时只禁 BUY，允许 ROLL 继续执行（高金币刷新兜底）
+    assert.deepEqual(adapter.executeCalls[0]?.map((action) => action.type), ["LEVEL_UP", "ROLL"]);
     assert.equal(result.verification?.ok, true);
 });
 

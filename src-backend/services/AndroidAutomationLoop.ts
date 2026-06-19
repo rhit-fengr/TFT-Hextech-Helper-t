@@ -128,7 +128,7 @@ function hasUnreliableHudSafeMaintenance(state: ObservedState): boolean {
 }
 
 function isSafeUnreliableHudAction(action: ActionPlan): boolean {
-    return action.type === "PICK_AUGMENT" || action.type === "PICK_LOOT" || action.type === "BUY";
+    return action.type === "PICK_AUGMENT" || action.type === "PICK_LOOT" || action.type === "BUY" || action.type === "EQUIP";
 }
 
 function isUnreliableHudLevelMaintenanceAction(action: ActionPlan): boolean {
@@ -169,7 +169,7 @@ function hasRecognizedShopOffer(state: ObservedState): boolean {
 }
 
 function isShopDependentAction(action: ActionPlan): boolean {
-    return action.type === "BUY" || action.type === "ROLL";
+    return action.type === "BUY";
 }
 
 function buildActionSignature(actions: ActionPlan[]): string {

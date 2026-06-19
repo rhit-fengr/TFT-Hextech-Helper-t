@@ -213,9 +213,9 @@ export class AndroidEmulatorAdapter implements GameAdapter {
         const boardUnits = this.options.safeObserve
             ? []
             : await this.readObservedComponent("board", () => tftOperator.getFightBoardInfo(), []);
-        const equips = this.options.safeObserve
-            ? []
-            : await this.readObservedComponent("equip", () => tftOperator.getEquipInfo(), []);
+        // 装备栏读取只做截图模板匹配，不需要右键/拖拽；safeObserve 也必须保留，
+        // 否则 Android 自动化永远看不到左侧装备栏，决策层不会生成 EQUIP。
+        const equips = await this.readObservedComponent("equip", () => tftOperator.getEquipInfo(), []);
 
         // Live stability note: stageResult.type may be UNKNOWN when OCR crops fall outside expected
         // regions due to emulator resolution mismatch, shop-open UI shift, or frame timing.
