@@ -624,7 +624,17 @@ export class AndroidEmulatorAdapter implements GameAdapter {
                     const itemIndex = parseSlotIndex(action.payload.itemIndex);
                     const boardLocation = action.payload.toBoard;
                     if (itemIndex !== null && isBoardLocation(boardLocation)) {
-                        await tftOperator.equipToBoardUnit(itemIndex, boardLocation);
+                        const activeEquipmentSlots = (tftOperator as any).getEquipmentSlotMap?.() ?? {};
+                        const equipSlotKey = `EQ_SLOT_${itemIndex + 1}` as string;
+                        const fromPoint = activeEquipmentSlots[equipSlotKey];
+                        const toPoint = fightBoardSlotPoint[boardLocation];
+                        if (fromPoint && toPoint) {
+                            await androidAdbCapture.swipeRelative(fromPoint, toPoint, 600);
+                            await sleep(500);
+                            logger.info(`[AndroidEmulatorAdapter] EQUIP 装备槽${itemIndex} → ${boardLocation}`);
+                        } else {
+                            await tftOperator.equipToBoardUnit(itemIndex, boardLocation);
+                        }
                     }
                     break;
                 }
@@ -668,11 +678,11 @@ export class AndroidEmulatorAdapter implements GameAdapter {
                                 ? benchSlotPoints[sellLocation as keyof typeof benchSlotPoints]
                                 : fightBoardSlotPoint[sellLocation as keyof typeof fightBoardSlotPoint];
                             if (fromPoint) {
-                                // Android 卖出：长按棋子拖到商店区域（SLOT_3 位置）
-                                const sellPoint = androidShopSlotPoints.SHOP_SLOT_3;
+                                // Android 卖出：拖到左下角卖出区域（经验值按钮附近）
+                                const sellPoint: SimplePoint = { x: 0.05, y: 0.95 };
                                 await androidAdbCapture.swipeRelative(fromPoint, sellPoint, 600);
                                 await sleep(500);
-                                logger.info(`[AndroidEmulatorAdapter] SELL ${sellLocation} → 商店区域`);
+                                logger.info(`[AndroidEmulatorAdapter] SELL ${sellLocation} → 左下角卖出区`);
                             }
                         }
                     }

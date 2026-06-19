@@ -82,8 +82,8 @@ const GAME_OVER_RESULT_EXIT_ACTION_POINT: SimplePoint = { x: 0.50, y: 0.60 };
 const GAME_OVER_SCOREBOARD_EXIT_ACTION_POINT: SimplePoint = { x: 0.87, y: 0.85 };
 const DISMISS_OVERLAY_ACTION_POINT: SimplePoint = { x: 0.78, y: 0.52 };
 const SETTINGS_DISMISS_ACTION_POINT: SimplePoint = { x: 0.80, y: 0.148 };
-const ENCOUNTER_CHOICE_LEFT_POINT: SimplePoint = { x: 0.35, y: 0.54 };
-const ENCOUNTER_CHOICE_RIGHT_POINT: SimplePoint = { x: 0.65, y: 0.54 };
+const ENCOUNTER_CHOICE_LEFT_POINT: SimplePoint = { x: 0.273, y: 0.694 };
+const ENCOUNTER_CHOICE_RIGHT_POINT: SimplePoint = { x: 0.516, y: 0.694 };
 
 function getLeaveRoomActionPoint(width: number, height: number): SimplePoint {
     return width / Math.max(1, height) > 1.90 ? { x: 0.24, y: 0.14 } : { x: 0.08, y: 0.06 };
