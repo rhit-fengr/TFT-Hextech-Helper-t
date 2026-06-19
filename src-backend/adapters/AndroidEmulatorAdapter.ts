@@ -649,6 +649,15 @@ export class AndroidEmulatorAdapter implements GameAdapter {
         const win = await windowHelper.findLOLWindow(GameClient.ANDROID);
         const minWidth = this.options.minWindowWidth ?? DEFAULT_MIN_RELIABLE_ANDROID_WINDOW_WIDTH;
         const minHeight = this.options.minWindowHeight ?? DEFAULT_MIN_RELIABLE_ANDROID_WINDOW_HEIGHT;
+
+        // 检测 BlueStacks Not Responding：窗口标题包含 "Not Responding" 时跳过执行
+        if (win && win.title && win.title.includes("Not Responding")) {
+            return {
+                ok: false,
+                detail: `BlueStacks Not Responding: ${win.title}，等待恢复`,
+            };
+        }
+
         if (win && (win.width < minWidth || win.height < minHeight)) {
             return {
                 ok: false,

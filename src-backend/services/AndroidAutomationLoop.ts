@@ -257,7 +257,7 @@ export class AndroidAutomationLoop {
     private readonly failedActionSignatures = new Map<string, number>();
     private timedOutOperationActive = false;
     private timedOutAt = 0;
-    private static readonly SETTLE_MS = 8000; // 超时后 8 秒自动恢复，不再等后台完成
+    private static readonly SETTLE_MS = 15000; // 超时后 15 秒自动恢复
 
     constructor(options: AndroidAutomationLoopOptions = {}) {
         this.adapter = options.adapter ?? null;
