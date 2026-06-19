@@ -321,6 +321,16 @@ export interface FusionPlan {
 }
 
 export class RuleBasedDecisionEngine implements DecisionEngine {
+    /** 动作冷却：相同动作类型在 N 个 tick 内不会重复生成 */
+    private readonly actionCooldowns = new Map<string, number>();
+
+    private readonly ACTION_COOLDOWN_TICKS: Record<string, number> = {
+        PICK_AUGMENT: 3,  // 增幅选择后等 3 tick 防重复
+        LEVEL_UP: 2,
+        ROLL: 2,
+        PICK_LOOT: 2,
+    };
+
     public generatePlan(state: ObservedState, context: DecisionContext = {}): ActionPlan[] {
         const plans: ActionPlan[] = [];
         const parsed = parseStage(state.stageText);
@@ -456,6 +466,10 @@ export class RuleBasedDecisionEngine implements DecisionEngine {
                 addPlan("LEVEL_UP", 94, "2-5 节奏点，提前补人口提升战力", { count: 1 });
             } else if (isKeyRound(parsed, 3, 2) && state.level < 6 && state.gold >= (mustStabilize ? 16 : shouldProtectWinStreak ? 20 : 24)) {
                 addPlan("LEVEL_UP", 112, "3-2 中期节奏，优先上 6 进入中期运营", { count: xpClicksToNextLevel(state, state.gold >= 50 ? 2 : 1, 6) });
+            } else if (parsed && parsed.stage === 3 && parsed.round >= 2 && state.level < 6 && hp <= hpThreshold + 10) {
+                // 低血量时提前升6，防止3阶段崩盘
+                const count = Math.max(1, xpClicksToNextLevel(state, 1, 6));
+                addPlan("LEVEL_UP", 108, `3 阶段低血量(${hp})提前升 6 稳血`, { count });
             } else if (parsed && parsed.stage === 3 && state.level < 6 && state.gold >= 48) {
                 const count = xpClicksToNextLevel(state, state.gold >= 80 ? 3 : 1, 6);
                 addPlan("LEVEL_UP", 112, "3 阶段经济异常溢出，提前上 6 防止金币空转", {
@@ -698,7 +712,23 @@ export class RuleBasedDecisionEngine implements DecisionEngine {
             addPlan("NOOP", 0, "当前局面无需强行动作，保持经济并继续观察", {});
         }
 
-        return plans
+        // 动作冷却：避免重复执行（如增幅选择后的过渡帧再次 pick）
+        const filtered = plans.filter((p) => {
+            const cooldown = this.ACTION_COOLDOWN_TICKS[p.type];
+            if (!cooldown) return true;
+            const lastTick = this.actionCooldowns.get(p.type) ?? -999;
+            if (p.tick - lastTick < cooldown) return false;
+            return true;
+        });
+
+        // 更新冷却状态
+        for (const p of filtered) {
+            if (this.ACTION_COOLDOWN_TICKS[p.type]) {
+                this.actionCooldowns.set(p.type, p.tick);
+            }
+        }
+
+        return filtered
             .sort((a, b) => b.priority - a.priority || a.tick - b.tick)
             .slice(0, 8);
     }

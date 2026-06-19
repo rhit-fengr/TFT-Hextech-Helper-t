@@ -580,11 +580,11 @@ export class TemplateLoader {
             }
 
             try {
-                // 加载为 RGB 彩色图 (移除 Alpha 通道，因为模板匹配不需要)
-                const mat = await this.loadImageAsMat(filePath, {
+                // 加载为灰度图，与 matchLootOrbs 中的目标图预处理一致（目标转为 GRAY）
+                const mat = await this.loadImageAsMat(filePath, { 
                     ensureAlpha: false,
                     removeAlpha: true,
-                    grayscale: false,
+                    grayscale: true,
                 });
 
                 if (mat) {
