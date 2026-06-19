@@ -29,8 +29,8 @@ export interface GameStageResult {
 
 export enum TFTMode {
     CLASSIC = 'CLASSIC',    //  经典模式，包括匹配和排位。
-    NORMAL = 'NORMAL',      //  S16 匹配模式
-    RANK = 'RANK',          //  S16 排位模式
+    NORMAL = 'NORMAL',      //  S17 匹配模式
+    RANK = 'RANK',          //  S17 排位模式
     CLOCKWORK_TRAILS = 'CLOCKWORK_TRAILS',       //  PVE，发条鸟的试炼
     S4_RUISHOU = 'S4_RUISHOU',                   //  S4 回归赛季: 瑞兽闹新春（仅匹配）
 }
@@ -755,7 +755,7 @@ export function getChessDataForMode(mode: TFTMode): Record<string, TFTUnit> {
  * 用于 TemplateLoader 加载对应赛季的英雄名称模板
  *
  * @param mode 当前 TFT 模式
- * @returns 子目录名，如 "s16", "s4"
+ * @returns 子目录名，如 "s17", "s4"
  */
 export function getSeasonTemplateDir(mode: TFTMode): string {
     switch (mode) {
@@ -765,7 +765,7 @@ export function getSeasonTemplateDir(mode: TFTMode): string {
         case TFTMode.RANK:
         case TFTMode.CLOCKWORK_TRAILS:
         default:
-            return 's16';
+            return 's17';
     }
 }
 

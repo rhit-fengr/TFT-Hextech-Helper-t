@@ -71,7 +71,7 @@ export class TemplateLoader {
      * 当前赛季子目录名（如 "s16", "s4"）
      * 决定 loadChampionTemplates() 加载哪个子文件夹的模板
      */
-    private currentSeasonDir: string = 's16';
+    private currentSeasonDir: string = 's17';
 
     /** 文件监听器引用（切换赛季时需要先关闭旧的监听器） */
     private championWatcher: fs.FSWatcher | null = null;

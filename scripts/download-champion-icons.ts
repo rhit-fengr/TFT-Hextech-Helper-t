@@ -10,7 +10,7 @@ import path from "path";
 import sharp from "sharp";
 
 const QQ_DATA_BASE = "https://game.gtimg.cn/images/lol/act/img/tft/js";
-const OUTPUT_DIR = path.join(process.cwd(), "resources/assets/images/champion/s16");
+const OUTPUT_DIR = path.join(process.cwd(), "public/resources/assets/images/champion/s17");
 
 interface ChessData {
     chessId: string;
