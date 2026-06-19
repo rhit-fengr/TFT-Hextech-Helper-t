@@ -527,6 +527,11 @@ export class RuleBasedDecisionEngine implements DecisionEngine {
             const count = Math.min(3, xpClicksToNextLevel(state, 1, 6));
             addPlan("LEVEL_UP", 114, `3-2+ 仍仅 ${state.level} 级，强制升 6 避免崩盘`, { count });
         }
+        // 兜底：阶段误读为 UNKNOWN 但经济已高时强制升级
+        if (state.level < 6 && state.gold >= 50 && !parsed) {
+            const count = Math.min(3, xpClicksToNextLevel(state, 1, 6));
+            addPlan("LEVEL_UP", 116, `阶段不可读但金币 ${state.gold} 且仅 ${state.level} 级，强制升级`, { count });
+        }
 
         const ownedCounts = countOwnedUnits([...state.bench, ...state.board]);
         const ownedByStar = countOwnedUnitsByStar([...state.bench, ...state.board]);

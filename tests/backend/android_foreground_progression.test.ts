@@ -228,21 +228,21 @@ test("android foreground progression selects game mode before starting queue", (
     assert.match(third.decision.reason, /Mode-selection actions already issued/i);
 });
 
-test("android foreground progression blocks blind mode-card taps on real screenshots", () => {
+test("android foreground progression taps verified normal-match mode points", () => {
     const observation = createObservation({
         state: "MODE_SELECT",
         source: "SCREENSHOT_CLASSIFIER",
         verification: "VERIFIED_REAL",
         actionPoints: {
-            SELECT_GAME_MODE: { x: 0.35, y: 0.66 },
+            SELECT_GAME_MODE: { x: 0.57, y: 0.66 },
             START_QUEUE: { x: 0.84, y: 0.90 },
         },
     });
 
     const result = planAndroidForegroundProgress(observation, createInitialAndroidForegroundProgressState());
 
-    assert.equal(result.decision.kind, "BLOCKED");
-    assert.match(result.decision.reason, /normal-match mode is not text-verified/i);
+    assert.equal(result.decision.kind, "TAP_SELECT_GAME_MODE");
+    assert.deepEqual(result.decision.targetPoint, { x: 0.57, y: 0.66 });
 });
 
 test("android foreground progression can requeue after ready-check returns to lobby", () => {

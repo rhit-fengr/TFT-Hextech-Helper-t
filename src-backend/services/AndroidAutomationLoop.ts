@@ -23,6 +23,7 @@ export interface AndroidAutomationLoopTraceState {
     benchSignature: string;
     boardSignature: string;
     itemSignature: string;
+    augmentChoiceVisible: boolean;
 }
 
 export interface AndroidAutomationVerification {
@@ -71,6 +72,7 @@ function summarizeState(state: ObservedState): AndroidAutomationLoopTraceState {
             .map((unit) => `${unit.location ?? ""}:${unit.id}:${unit.star}:${unit.items.join(",")}`)
             .join("|"),
         itemSignature: state.items.join("|"),
+        augmentChoiceVisible: state.metadata?.augmentChoiceVisible === true,
     };
 }
 
@@ -229,6 +231,13 @@ function verifyActions(
         checkedActionTypes.push("EQUIP");
         if (after.boardSignature === before.boardSignature && after.itemSignature === before.itemSignature) {
             failures.push("EQUIP did not change board items or inventory signature");
+        }
+    }
+
+    if (actionTypes.has("PICK_AUGMENT")) {
+        checkedActionTypes.push("PICK_AUGMENT");
+        if (before.augmentChoiceVisible && after.augmentChoiceVisible) {
+            failures.push("PICK_AUGMENT did not close augment or encounter choice overlay");
         }
     }
 
@@ -556,6 +565,7 @@ export class AndroidAutomationLoop {
                     benchSignature: "",
                     boardSignature: "",
                     itemSignature: "",
+                    augmentChoiceVisible: false,
                 },
                 after: null,
             },

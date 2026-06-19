@@ -574,6 +574,51 @@ test("android window classifier detects ad-sidebar room lobby reset point", asyn
     assert.ok((result.roomBackGoldRatio ?? 0) > 0.018);
 });
 
+test("android window classifier detects main lobby start-game CTA", async () => {
+    const screenshot = await fs.readFile(
+        path.resolve(
+            process.cwd(),
+            "examples",
+            "recordings",
+            "android-foreground-na-captures",
+            "pending-real-captures",
+            "lobby",
+            "na_main_lobby_start_game_01.png"
+        )
+    );
+
+    const result = await classifyAndroidWindowScreenshot(screenshot);
+
+    assert.equal(result.state, "LOBBY");
+    assert.equal(result.lobbyVariant, "DEFAULT");
+    assert.deepEqual(result.startQueuePoint, { x: 0.82, y: 0.9 });
+    assert.ok((result.lobbyStartBlueRatio ?? 0) > 0.14);
+    assert.ok((result.acceptButtonBlueRatio ?? 0) > 0.05);
+});
+
+test("android window classifier detects wide room lobby with low-dark back button", async () => {
+    const screenshot = await fs.readFile(
+        path.resolve(
+            process.cwd(),
+            "examples",
+            "recordings",
+            "android-foreground-na-captures",
+            "pending-real-captures",
+            "lobby",
+            "na_room_wide_start_blocked_01.png"
+        )
+    );
+
+    const result = await classifyAndroidWindowScreenshot(screenshot);
+
+    assert.equal(result.state, "LOBBY");
+    assert.equal(result.lobbyVariant, "ROOM");
+    assert.deepEqual(result.startQueuePoint, { x: 0.82, y: 0.9 });
+    assert.deepEqual(result.leaveRoomPoint, { x: 0.08, y: 0.06 });
+    assert.ok((result.roomBackGoldRatio ?? 0) > 0.025);
+    assert.ok((result.roomBackDarkRatio ?? 0) > 0.20);
+});
+
 test("android window classifier detects mode-selection carousel after tapping start", async () => {
     const screenshot = await fs.readFile(
         path.resolve(
@@ -594,6 +639,26 @@ test("android window classifier detects mode-selection carousel after tapping st
     assert.deepEqual(result.startQueuePoint, { x: 0.82, y: 0.90 });
     assert.ok((result.modeSelectGoldRatio ?? 0) > 0.04);
     assert.ok((result.modeSelectBlueRatio ?? 0) > 0.04);
+});
+
+test("android window classifier selects shifted normal-match mode card", async () => {
+    const screenshot = await fs.readFile(
+        path.resolve(
+            process.cwd(),
+            "examples",
+            "recordings",
+            "android-foreground-na-captures",
+            "pending-real-captures",
+            "mode-select",
+            "na_mode_select_current_match_01.png"
+        )
+    );
+
+    const result = await classifyAndroidWindowScreenshot(screenshot);
+
+    assert.equal(result.state, "MODE_SELECT");
+    assert.deepEqual(result.selectGameModePoint, { x: 0.57, y: 0.66 });
+    assert.deepEqual(result.startQueuePoint, { x: 0.82, y: 0.90 });
 });
 
 test("android window classifier keeps selected-mode start screen in lobby flow", async () => {
@@ -664,6 +729,30 @@ test("android window classifier uses centered confirm button for latest ranked-r
     assert.equal(result.state, "CONFIRM_MODAL");
     assert.equal(result.confirmModalVariant, "RECOVERABLE_CONFIRM");
     assert.deepEqual(result.confirmModalPoint, { x: 0.50, y: 0.62 });
+});
+
+test("android window classifier detects server-error confirmation after leaving room", async () => {
+    const screenshot = await fs.readFile(
+        path.resolve(
+            process.cwd(),
+            "examples",
+            "recordings",
+            "android-foreground-na-captures",
+            "pending-real-captures",
+            "confirm",
+            "na_server_error_after_leave_room_01.png"
+        )
+    );
+
+    const result = await classifyAndroidWindowScreenshot(screenshot);
+    const observation = normalizeAndroidForegroundObservation(result);
+
+    assert.equal(result.state, "CONFIRM_MODAL");
+    assert.equal(result.confirmModalVariant, "RECOVERABLE_CONFIRM");
+    assert.deepEqual(result.confirmModalPoint, { x: 0.50, y: 0.62 });
+    assert.deepEqual(observation.actionPoints?.CONFIRM_MODAL, { x: 0.50, y: 0.62 });
+    assert.ok((result.acceptModalDarkRatio ?? 0) > 0.82);
+    assert.ok((result.queueCancelDarkRatio ?? 0) > 0.70);
 });
 
 test("android foreground protocol labels network confirmation modal separately", () => {
@@ -1513,6 +1602,28 @@ test("android window classifier flags one-option encounter choice overlay", asyn
     assert.equal(result.augmentChoiceVisible, true);
     assert.deepEqual(result.augmentChoicePoint, { x: 0.65, y: 0.54 });
     assert.equal(observation.state, "LIVE_CONTENT");
+});
+
+test("android window classifier flags S17 star-god shop encounter choice overlay", async () => {
+    const screenshot = await fs.readFile(
+        path.resolve(
+            process.cwd(),
+            "examples",
+            "recordings",
+            "android-foreground-na-captures",
+            "pending-real-captures",
+            "augment",
+            "na_s17_star_god_shop_choice_01.png"
+        )
+    );
+
+    const result = await classifyAndroidWindowScreenshot(screenshot);
+    const observation = normalizeAndroidForegroundObservation(result);
+
+    assert.equal(result.augmentChoiceVisible, true);
+    assert.deepEqual(result.augmentChoicePoint, { x: 0.35, y: 0.54 });
+    assert.equal(observation.state, "LIVE_CONTENT");
+    assert.ok(observation.anchors?.includes("augment-choice-overlay"));
 });
 
 test("android window classifier detects live player-list board view without gold HUD", async () => {

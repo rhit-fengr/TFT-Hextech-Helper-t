@@ -281,16 +281,6 @@ export function planAndroidForegroundProgress(
             return waitDecision("Mode-selection screen detected, but no game-mode action point is available", nextState);
         }
 
-        if (observation.source === "SCREENSHOT_CLASSIFIER" && observation.verification === "VERIFIED_REAL") {
-            return {
-                decision: {
-                    kind: "BLOCKED",
-                    reason: "Real mode-selection screen detected, but normal-match mode is not text-verified; refusing blind mode-card tap",
-                },
-                nextState,
-            };
-        }
-
         if (!alreadyActioned("TAP_SELECT_GAME_MODE", nextState)) {
             return {
                 decision: {

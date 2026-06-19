@@ -279,10 +279,11 @@ export async function detectAndroidLootOrbsFromScreenshot(screenshot: Buffer): P
                 orb.darkRatio <= 0.08 &&
                 orb.purpleRatio >= 0.45;
             return (
-                orb.x >= 0.25 &&
-                orb.x <= 0.80 &&
-                orb.y >= 0.44 &&
-                orb.y <= 0.78 &&
+                orb.x >= 0.30 &&
+                orb.x <= 0.75 &&
+                orb.y >= 0.50 &&
+                orb.y <= 0.75 &&
+                orb.confidence >= 0.35 &&
                 !purePurpleBoardTexture &&
                 (!likelyProbabilityTriangle || topObscuredBlueQuestionSignal) &&
                 (
@@ -290,9 +291,9 @@ export async function detectAndroidLootOrbsFromScreenshot(screenshot: Buffer): P
                         orb.type === "blue" &&
                         (
                             (
-                                orb.confidence >= 0.25 &&
+                                orb.confidence >= 0.35 &&
                                 lowPurpleLootSignal &&
-                                (orb.y >= 0.53 || (orb.width >= 12 && orb.height >= 12))
+                                (orb.y >= 0.53 || (orb.width >= 14 && orb.height >= 14))
                             ) ||
                             roundBlueLootSignal ||
                             smallBlueQuestionSignal ||
@@ -301,7 +302,7 @@ export async function detectAndroidLootOrbsFromScreenshot(screenshot: Buffer): P
                             darkBoardBlueQuestionSignal
                         )
                     ) ||
-                    whiteQuestionSignal
+                    (orb.type === "normal" && whiteQuestionSignal && orb.confidence >= 0.50)
                 )
             );
         })

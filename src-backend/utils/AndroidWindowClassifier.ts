@@ -97,6 +97,54 @@ function isDarkProgressPixel(red: number, green: number, blue: number): boolean 
     return red < 80 && green < 80 && blue < 80;
 }
 
+function detectNormalModeSelectActionPoint(
+    buffer: { data: Buffer; info: sharp.OutputInfo },
+    frameWidth: number,
+    frameHeight: number,
+    region: { left: number; top: number; width: number; height: number }
+): SimplePoint | undefined {
+    const candidates = [0.13, 0.35, 0.57, 0.79];
+    let bestPoint: SimplePoint | undefined;
+    let bestScore = 0;
+
+    for (const centerX of candidates) {
+        let bluePixels = 0;
+        let goldPixels = 0;
+        let totalPixels = 0;
+        const left = Math.round(frameWidth * (centerX - 0.085)) - region.left;
+        const right = Math.round(frameWidth * (centerX + 0.085)) - region.left;
+        const top = Math.round(frameHeight * 0.30) - region.top;
+        const bottom = Math.round(frameHeight * 0.62) - region.top;
+
+        for (let y = Math.max(0, top); y < Math.min(buffer.info.height, bottom); y += 1) {
+            for (let x = Math.max(0, left); x < Math.min(buffer.info.width, right); x += 1) {
+                const index = (y * buffer.info.width + x) * buffer.info.channels;
+                const red = buffer.data[index];
+                const green = buffer.data[index + 1];
+                const blue = buffer.data[index + 2];
+                totalPixels += 1;
+
+                if (blue > 145 && green > 80 && red < 150) {
+                    bluePixels += 1;
+                }
+                if (isGoldLoginPixel(red, green, blue)) {
+                    goldPixels += 1;
+                }
+            }
+        }
+
+        const score = totalPixels > 0
+            ? bluePixels / totalPixels - (goldPixels / totalPixels) * 0.25
+            : 0;
+        if (score > bestScore) {
+            bestScore = score;
+            bestPoint = { x: centerX, y: 0.66 };
+        }
+    }
+
+    return bestScore > 0.20 ? bestPoint : undefined;
+}
+
 /**
  * 识别 BlueStacks 启动页。
  * 启动页右下角常驻大块亮蓝色 CTA，而真实 TFT 画面该区域通常不会出现如此高占比的亮蓝块。
@@ -213,6 +261,13 @@ export async function classifyAndroidWindowScreenshot(
         height: Math.max(1, Math.round(height * 0.48)),
     };
 
+    const modeSelectCardRegion = {
+        left: 0,
+        top: Math.max(0, Math.round(height * 0.30)),
+        width: Math.max(1, width),
+        height: Math.max(1, Math.round(height * 0.32)),
+    };
+
     const { data, info } = await sharp(screenshot)
         .extract(blueRegion)
         .raw()
@@ -285,6 +340,11 @@ export async function classifyAndroidWindowScreenshot(
 
     const modeSelectBuffer = await sharp(screenshot)
         .extract(modeSelectRegion)
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+
+    const modeSelectCardBuffer = await sharp(screenshot)
+        .extract(modeSelectCardRegion)
         .raw()
         .toBuffer({ resolveWithObject: true });
 
@@ -1509,6 +1569,28 @@ export async function classifyAndroidWindowScreenshot(
         modeSelectBlueRatio < 0.03 &&
         progressDarkRatio > 0.75 &&
         progressDarkRatio < 0.90;
+    const s17StarGodShopEncounterChoiceVisible =
+        acceptModalDarkRatio > 0.84 &&
+        transitionCenterDarkRatio > 0.86 &&
+        augmentCardDarkRatio > 0.78 &&
+        augmentCardDarkRatio < 0.82 &&
+        augmentCardPurpleRatio > 0.015 &&
+        augmentCardPurpleRatio < 0.025 &&
+        augmentRerollGoldRatio > 0.035 &&
+        augmentRerollGoldRatio < 0.050 &&
+        augmentRerollBlueRatio < 0.004 &&
+        liveHudGoldSignalRatio > 0.015 &&
+        liveHudGoldSignalRatio < 0.025 &&
+        liveHudScoreSignalRatio > 0.085 &&
+        liveHudScoreSignalRatio < 0.105 &&
+        queueStatusDarkRatio > 0.70 &&
+        queueStatusDarkRatio < 0.75 &&
+        queueCancelDarkRatio > 0.42 &&
+        queueCancelDarkRatio < 0.47 &&
+        lobbyStartBlueRatio < 0.005 &&
+        modeSelectBlueRatio < 0.005 &&
+        progressDarkRatio > 0.56 &&
+        progressDarkRatio < 0.62;
     const encounterChoiceVisible =
         brightEncounterChoiceVisible ||
         darkEncounterChoiceVisible ||
@@ -1530,7 +1612,8 @@ export async function classifyAndroidWindowScreenshot(
         shopStarGodEncounterChoiceVisible ||
         duelStarGodEncounterChoiceVisible ||
         lowPurpleDuelStarGodEncounterChoiceVisible ||
-        singleEncounterChoiceVisible;
+        singleEncounterChoiceVisible ||
+        s17StarGodShopEncounterChoiceVisible;
     const augmentChoiceVisible = standardAugmentChoiceVisible || encounterChoiceVisible;
     if (encounterChoiceVisible) {
         augmentChoicePoint = starGodEncounterChoiceVisible ||
@@ -2945,7 +3028,7 @@ export async function classifyAndroidWindowScreenshot(
             frontendVariant = "UPDATE_READY";
             primaryActionPoint = UPDATE_PRIMARY_ACTION_POINT;
         }
-    } else if (isStandardAcceptReady || isLargeCircleAcceptReady) {
+    } else if ((isStandardAcceptReady || isLargeCircleAcceptReady) && !isGameOverResultModal && !isDimmedGameOverResultModal) {
         state = "ACCEPT_READY";
         acceptReadyPoint = ACCEPT_READY_ACTION_POINT;
     } else if (queueCancelDarkRatio > 0.60 && queueStatusGoldRatio > 0.035 && queueStatusDarkRatio > 0.15 && queueStatusDarkRatio < 0.45) {
@@ -2968,10 +3051,22 @@ export async function classifyAndroidWindowScreenshot(
         lobbyStartBlueRatio < 0.05
     ) {
         state = "MODE_SELECT";
-        selectGameModePoint = SELECT_GAME_MODE_ACTION_POINT;
+        selectGameModePoint = detectNormalModeSelectActionPoint(
+            modeSelectCardBuffer,
+            width,
+            height,
+            modeSelectCardRegion
+        ) ?? SELECT_GAME_MODE_ACTION_POINT;
         startQueuePoint = START_QUEUE_ACTION_POINT;
     } else if (
-        acceptModalDarkRatio > 0.85 &&
+        (
+            acceptModalDarkRatio > 0.85 ||
+            (
+                acceptModalDarkRatio > 0.82 &&
+                queueCancelDarkRatio > 0.70 &&
+                progressDarkRatio > 0.90
+            )
+        ) &&
         transitionCenterDarkRatio > 0.80 &&
         lobbyStartBlueRatio < 0.05 &&
         acceptButtonBlueRatio < 0.02 &&
@@ -3019,12 +3114,25 @@ export async function classifyAndroidWindowScreenshot(
         !hasLiveContentHudSignal
     ) {
         state = "LOBBY";
-        if (roomBackGoldRatio > 0.018 && roomBackDarkRatio > 0.50) {
+        const hasRoomBackCta =
+            (roomBackGoldRatio > 0.018 && roomBackDarkRatio > 0.50) ||
+            (roomBackGoldRatio > 0.025 && roomBackDarkRatio > 0.20);
+        if (hasRoomBackCta) {
             lobbyVariant = "ROOM";
             leaveRoomPoint = getLeaveRoomActionPoint(width, height);
         } else {
             lobbyVariant = "DEFAULT";
         }
+        startQueuePoint = START_QUEUE_ACTION_POINT;
+    } else if (
+        lobbyStartBlueRatio > 0.14 &&
+        lobbyStartDarkRatio < 0.23 &&
+        acceptButtonBlueRatio > 0.05 &&
+        queueCancelDarkRatio < 0.25 &&
+        !hasLiveContentHudSignal
+    ) {
+        state = "LOBBY";
+        lobbyVariant = "DEFAULT";
         startQueuePoint = START_QUEUE_ACTION_POINT;
     } else if (isGameOverResultModal || isDimmedGameOverResultModal || isLateDimmedGameOverResultModal || isBrightGameOverResultModal || isMutedGameOverResultModal || isPurpleMutedGameOverResultModal || isLiveHudPlacementGameOverResultModal) {
         state = "GAME_OVER";

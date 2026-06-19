@@ -26,6 +26,7 @@ import { isLikelyOpponentBoardViewForHud, isLikelyOpponentBoardViewForLoot } fro
 import { buildAndroidSafeObserveAutoDeploySwipes } from "./AndroidAutoDeployPoints";
 import { androidBuyExpPoint, androidRefreshShopPoint, androidShopSlotPoints } from "./AndroidShopControls";
 import { sortAndroidActionsForExecution } from "./AndroidActionPlanner";
+import { shouldUseEmergencyEconomyObserve } from "./AndroidEmergencyEconomyObserve";
 
 export interface AndroidEmulatorAdapterOptions {
     safeObserve?: boolean;
@@ -203,6 +204,39 @@ export class AndroidEmulatorAdapter implements GameAdapter {
         }
         if (gold === null && effectiveGold !== null) {
             logger.debug(`[AndroidEmulatorAdapter] 沿用上一帧安卓金币: ${effectiveGold}`);
+        }
+        if (
+            effectiveLevelInfo &&
+            effectiveGold !== null &&
+            shouldUseEmergencyEconomyObserve(stageResult, effectiveLevelInfo.level, effectiveGold, this.options.safeObserve)
+        ) {
+            logger.warn(
+                `[AndroidEmulatorAdapter] 紧急经济观察: stage=${stageResult.stageText} ` +
+                `level=${effectiveLevelInfo.level} gold=${effectiveGold}，跳过商店/装备/法球慢速读取，先花钱救场`
+            );
+            const state = normalizeRuntimeState({
+                client: GameClient.ANDROID,
+                target: this.target,
+                stageText: stageResult.stageText,
+                stageType: stageResult.type,
+                level: effectiveLevelInfo.level,
+                currentXp: effectiveLevelInfo.currentXp,
+                totalXp: effectiveLevelInfo.totalXp,
+                gold: effectiveGold,
+                shopUnits: [],
+                benchUnits: [],
+                boardUnits: [],
+                equipments: [],
+                metadata: {
+                    hasValidStage: true,
+                    emergencyEconomyObserve: true,
+                },
+            });
+            this.lastLiveHud = {
+                levelInfo: effectiveLevelInfo,
+                gold: effectiveGold,
+            };
+            return state;
         }
         const shopUnits = readShop
             ? await this.readObservedComponent("shop", () => tftOperator.getShopInfoFast(), [])
@@ -601,7 +635,10 @@ export class AndroidEmulatorAdapter implements GameAdapter {
                         if (!tapped) {
                             await mouseController.clickAt(directPoint, MouseButtonType.LEFT);
                         }
-                        await sleep(1800);
+                        await sleep(500);
+                        // 二次点击确认（Android TFT 可能需要双击选择增幅）
+                        await androidAdbCapture.tapRelative(directPoint);
+                        await sleep(1500);
                         break;
                     }
                     const slot = Math.max(1, Math.min(3, parseSlotIndex(action.payload.slot) ?? 2));
@@ -610,7 +647,10 @@ export class AndroidEmulatorAdapter implements GameAdapter {
                     if (!tapped) {
                         await mouseController.clickAt(hexSlot[slotKey], MouseButtonType.LEFT);
                     }
-                    await sleep(1800);
+                    await sleep(500);
+                    // 二次点击确认
+                    await androidAdbCapture.tapRelative(hexSlot[slotKey]);
+                    await sleep(1500);
                     break;
                 }
                 case "PICK_LOOT": {
