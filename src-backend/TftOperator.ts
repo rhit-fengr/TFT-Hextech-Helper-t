@@ -295,6 +295,20 @@ class TftOperator {
         }
     }
 
+    /**
+     * 按 englishId（模板文件名）反向查找 TFTUnit
+     * 模板匹配返回的是文件名（如 TFT17_Briar），chessData 键是中文名（如 贝蕾亚）。
+     */
+    private findChampionByEnglishId(englishId: string): TFTUnit | null {
+        const chessData = this.currentChessData || this.getActiveChessData();
+        for (const unit of Object.values(chessData)) {
+            if (unit.englishId === englishId || unit.displayName === englishId) {
+                return unit;
+            }
+        }
+        return null;
+    }
+
     private canUseOpenCvNow(): boolean {
         if (!cv) return false;
         try {
@@ -970,7 +984,7 @@ class TftOperator {
                 try {
                     const matchResult = templateMatcher.matchChampionDetailed(targetMat);
                     if (matchResult && matchResult.name && matchResult.name !== "empty") {
-                        const unit = chessData[matchResult.name];
+                        const unit = chessData[matchResult.name] ?? this.findChampionByEnglishId(matchResult.name);
                         if (unit) {
                             logger.debug(
                                 `[商店槽位 ${slotIndex}] 模板匹配: ${unit.displayName} ` +
@@ -1012,13 +1026,18 @@ class TftOperator {
                     const portraitMat = await screenCapture.captureRegionAsMat(portraitRegion);
                     try {
                         const matchResult = templateMatcher.matchChampionDetailed(portraitMat);
-                        if (matchResult && matchResult.name && matchResult.name !== "empty" && chessData[matchResult.name]) {
-                            logger.debug(
-                                `[商店槽位 ${i}] 头像模板匹配: ${chessData[matchResult.name].displayName} ` +
-                                `(${(matchResult.confidence * 100).toFixed(1)}%)`
-                            );
-                            results.push(chessData[matchResult.name]);
-                            continue;
+                        if (matchResult && matchResult.name && matchResult.name !== "empty") {
+                            // 模板匹配返回英文ID（如TFT17_Briar），chessData键是中文名（如贝蕾亚）
+                            // 先直接查中文名，查不到再按englishId反向查找
+                            const unit = chessData[matchResult.name] ?? this.findChampionByEnglishId(matchResult.name);
+                            if (unit) {
+                                logger.debug(
+                                    `[商店槽位 ${i}] 头像模板匹配: ${unit.displayName} ` +
+                                    `(${(matchResult.confidence * 100).toFixed(1)}%)`
+                                );
+                                results.push(unit);
+                                continue;
+                            }
                         }
                     } finally {
                         portraitMat.delete();
