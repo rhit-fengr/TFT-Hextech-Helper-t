@@ -3028,7 +3028,7 @@ export async function classifyAndroidWindowScreenshot(
             frontendVariant = "UPDATE_READY";
             primaryActionPoint = UPDATE_PRIMARY_ACTION_POINT;
         }
-    } else if ((isStandardAcceptReady || isLargeCircleAcceptReady) && !isGameOverResultModal && !isDimmedGameOverResultModal) {
+    } else if ((isStandardAcceptReady || isLargeCircleAcceptReady) && !isGameOverResultModal && !isDimmedGameOverResultModal && !isLateDimmedGameOverResultModal && !isBrightGameOverResultModal && !isMutedGameOverResultModal && !isPurpleMutedGameOverResultModal && !isLiveHudPlacementGameOverResultModal && !isGameOverScoreboard && !isDarkGameOverScoreboard) {
         state = "ACCEPT_READY";
         acceptReadyPoint = ACCEPT_READY_ACTION_POINT;
     } else if (queueCancelDarkRatio > 0.60 && queueStatusGoldRatio > 0.035 && queueStatusDarkRatio > 0.15 && queueStatusDarkRatio < 0.45) {
