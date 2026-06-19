@@ -321,17 +321,19 @@ export interface FusionPlan {
 }
 
 export class RuleBasedDecisionEngine implements DecisionEngine {
-    /** 动作冷却：相同动作类型在 N 个 tick 内不会重复生成 */
+    /** 动作冷却：相同动作类型在 N 次 generatePlan 调用内不重复 */
     private readonly actionCooldowns = new Map<string, number>();
-
     private readonly ACTION_COOLDOWN_TICKS: Record<string, number> = {
-        PICK_AUGMENT: 3,  // 增幅选择后等 3 tick 防重复
+        PICK_AUGMENT: 3,
         LEVEL_UP: 2,
         ROLL: 2,
         PICK_LOOT: 2,
     };
+    /** 外部 tick 计数器（每次 generatePlan 调用递增） */
+    private generationCount = 0;
 
     public generatePlan(state: ObservedState, context: DecisionContext = {}): ActionPlan[] {
+        this.generationCount++;
         const plans: ActionPlan[] = [];
         const parsed = parseStage(state.stageText);
         const targetNames = new Set((context.targetChampionNames ?? []).filter(Boolean));
@@ -454,8 +456,9 @@ export class RuleBasedDecisionEngine implements DecisionEngine {
             }
         }
 
-        // 关键回合升人口节奏（参考自动运营常见节奏：2-1/2-5/3-2/4-2/5-1）
-        if (state.stageType === GameStageType.PVP) {
+        // 关键回合升人口节奏（同时覆盖 PVP 和 AUGMENT：2-1/2-5/3-2 的增幅选秀阶段也可升人口）
+        const isLevelUpStage = state.stageType === GameStageType.PVP || state.stageType === GameStageType.AUGMENT;
+        if (isLevelUpStage) {
             if (parsed && parsed.stage <= 2 && state.level < 6 && state.gold >= 80) {
                 addPlan("LEVEL_UP", 112, "前中期经济异常溢出，优先升 6 转化战力", {
                     count: xpClicksToNextLevel(state, state.gold >= 100 ? 3 : 2, 6),
@@ -714,17 +717,17 @@ export class RuleBasedDecisionEngine implements DecisionEngine {
 
         // 动作冷却：避免重复执行（如增幅选择后的过渡帧再次 pick）
         const filtered = plans.filter((p) => {
-            const cooldown = this.ACTION_COOLDOWN_TICKS[p.type];
-            if (!cooldown) return true;
-            const lastTick = this.actionCooldowns.get(p.type) ?? -999;
-            if (p.tick - lastTick < cooldown) return false;
+            const cd = this.ACTION_COOLDOWN_TICKS[p.type];
+            if (!cd) return true;
+            const lastGen = this.actionCooldowns.get(p.type) ?? -999;
+            if (this.generationCount - lastGen < cd) return false;
             return true;
         });
 
         // 更新冷却状态
         for (const p of filtered) {
             if (this.ACTION_COOLDOWN_TICKS[p.type]) {
-                this.actionCooldowns.set(p.type, p.tick);
+                this.actionCooldowns.set(p.type, this.generationCount);
             }
         }
 
