@@ -460,11 +460,18 @@ async function main(): Promise<void> {
                             );
                         }
                         if (observation.state === "QUEUE") {
-                            foregroundProgressState = await fastPollQueueForeground(
-                                snapshotDir,
-                                tick + 1,
-                                foregroundProgressState
-                            );
+                            // 结算页启动时识别到 GAME_OVER → 不排队，直接退出
+                            if (gameOverDetected) {
+                                process.stderr.write(
+                                    `[android:auto] GAME_OVER 后识别到 QUEUE，跳过排队\n`
+                                );
+                            } else {
+                                foregroundProgressState = await fastPollQueueForeground(
+                                    snapshotDir,
+                                    tick + 1,
+                                    foregroundProgressState
+                                );
+                            }
                         }
                         // GAME_OVER 检测：第一次进入 GAME_OVER 时标记，停止 loop
                         if (observation.state === "GAME_OVER" && !gameOverDetected) {
