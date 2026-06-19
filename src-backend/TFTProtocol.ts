@@ -161,6 +161,30 @@ export const androidShopSlotNameRegions = {
     },
 }
 
+// 安卓真机商店卡牌头像区域（卡牌上半部，用于模板匹配识别英雄）
+export const androidShopSlotPortraitRegions = {
+    SLOT_1: {
+        leftTop: { x: 0.105, y: 0.010 },
+        rightBottom: { x: 0.265, y: 0.280 }
+    },
+    SLOT_2: {
+        leftTop: { x: 0.229, y: 0.010 },
+        rightBottom: { x: 0.389, y: 0.280 }
+    },
+    SLOT_3: {
+        leftTop: { x: 0.350, y: 0.010 },
+        rightBottom: { x: 0.510, y: 0.280 }
+    },
+    SLOT_4: {
+        leftTop: { x: 0.471, y: 0.010 },
+        rightBottom: { x: 0.631, y: 0.280 }
+    },
+    SLOT_5: {
+        leftTop: { x: 0.592, y: 0.010 },
+        rightBottom: { x: 0.752, y: 0.280 }
+    },
+}
+
 // 安卓真机 HUD 金币数字区域（基于 2026-03-15 真机录屏校准）
 export const androidHudGoldTextRegion = {
     leftTop: { x: 0.6500, y: 0.0000 },

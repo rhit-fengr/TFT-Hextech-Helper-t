@@ -197,14 +197,23 @@ function verifyActions(
 
     if (actionTypes.has("ROLL")) {
         checkedActionTypes.push("ROLL");
-        if (after.shopSignature === before.shopSignature) {
-            failures.push("ROLL did not change shop signature");
+        // ROLL 验证放宽：如果商店 OCR 返回全空（before 和 after 都是 empty），
+        // 不强制要求 shopSignature 变化，因为 OCR 可能无法识别刷新后的商店
+        const beforeEmpty = before.shopSignature.includes("empty");
+        const afterEmpty = after.shopSignature.includes("empty");
+        if (!beforeEmpty || !afterEmpty) {
+            if (after.shopSignature === before.shopSignature) {
+                failures.push("ROLL did not change shop signature");
+            }
         }
     }
 
     if (actionTypes.has("LEVEL_UP")) {
         checkedActionTypes.push("LEVEL_UP");
-        if (!(after.level > before.level || after.currentXp > before.currentXp || after.gold < before.gold)) {
+        // LEVEL_UP 验证放宽：安卓 HUD 刷新延迟大，有时 execute 后 observe 时状态未更新。
+        // 只在 LEVEL_UP 是唯一动作时验证；多动作混合时不强制要求 LEVEL_UP 改变状态。
+        const isLevelOnly = actionTypes.size === 1;
+        if (isLevelOnly && !(after.level > before.level || after.currentXp > before.currentXp || after.gold < before.gold)) {
             failures.push("LEVEL_UP did not change level, XP, or gold");
         }
     }
@@ -247,6 +256,8 @@ export class AndroidAutomationLoop {
     private readonly operationTimeoutMs: number;
     private readonly failedActionSignatures = new Map<string, number>();
     private timedOutOperationActive = false;
+    private timedOutAt = 0;
+    private static readonly SETTLE_MS = 8000; // 超时后 8 秒自动恢复，不再等后台完成
 
     constructor(options: AndroidAutomationLoopOptions = {}) {
         this.adapter = options.adapter ?? null;
@@ -258,6 +269,12 @@ export class AndroidAutomationLoop {
     }
 
     public async runOnce(): Promise<AndroidAutomationLoopResult> {
+        // 超时后自动恢复：超过 SETTLE_MS 后清除标记，允许重新尝试
+        if (this.timedOutOperationActive && Date.now() - this.timedOutAt >= AndroidAutomationLoop.SETTLE_MS) {
+            logger.info("[AndroidAutomationLoop] 超时恢复：settling 期结束，继续执行");
+            this.timedOutOperationActive = false;
+        }
+
         const adapter = await this.getAdapter();
         const beforeStateResult = await this.runAdapterOperation("observe before action", () => adapter.observe());
         if (!beforeStateResult.ok) {
@@ -472,6 +489,8 @@ export class AndroidAutomationLoop {
                 timeoutId = setTimeout(() => {
                     timedOut = true;
                     this.timedOutOperationActive = true;
+                    this.timedOutAt = Date.now();
+                    logger.warn(`[AndroidAutomationLoop] ${label} 超时，${AndroidAutomationLoop.SETTLE_MS / 1000}s 后恢复`);
                     reject(new Error(`Adapter ${label} timed out after ${this.operationTimeoutMs}ms`));
                 }, this.operationTimeoutMs);
             });

@@ -53,6 +53,7 @@ import {
     androidGameStageDisplayShopOpen,
     androidGameStageDisplayStageOne,
     androidShopSlotNameRegions,
+    androidShopSlotPortraitRegions,
     androidEquipmentRegion,
     androidEquipmentSlot,
     benchSlotPoints,
@@ -994,22 +995,49 @@ class TftOperator {
     }
 
     private async getShopInfoFastOcrFallback(): Promise<(TFTUnit | null)[]> {
-        logger.info("[TftOperator] 快速扫描商店 (raw OCR 回退模式)...");
+        logger.info("[TftOperator] 快速扫描商店 (头像+文字双识别)...");
         const chessData = this.getActiveChessData();
         const results: (TFTUnit | null)[] = [];
+        const useTemplate = templateLoader.isReady() && templateMatcher.isTemplateMatchAvailable();
 
         for (let i = 1; i <= 5; i++) {
             const slotKey = `SLOT_${i}` as keyof typeof shopSlotNameRegions;
-            const region = this.getShopNameAbsoluteRegion(slotKey);
 
+            // 第一优先：头像模板匹配（更稳定）
+            if (useTemplate) {
+                try {
+                    const portraitRegion = screenCapture.toAbsoluteRegion(
+                        androidShopSlotPortraitRegions[slotKey]
+                    );
+                    const portraitMat = await screenCapture.captureRegionAsMat(portraitRegion);
+                    try {
+                        const matchResult = templateMatcher.matchChampionDetailed(portraitMat);
+                        if (matchResult && matchResult.name && matchResult.name !== "empty" && chessData[matchResult.name]) {
+                            logger.debug(
+                                `[商店槽位 ${i}] 头像模板匹配: ${chessData[matchResult.name].displayName} ` +
+                                `(${(matchResult.confidence * 100).toFixed(1)}%)`
+                            );
+                            results.push(chessData[matchResult.name]);
+                            continue;
+                        }
+                    } finally {
+                        portraitMat.delete();
+                    }
+                } catch (error: any) {
+                    logger.debug(`[商店槽位 ${i}] 头像匹配失败: ${error.message}`);
+                }
+            }
+
+            // 第二优先：OCR 文字识别
             try {
+                const region = this.getShopNameAbsoluteRegion(slotKey);
                 const rawPng = await screenCapture.captureRegionAsPng(region, false);
                 const text = await ocrService.recognize(rawPng, OcrWorkerType.CHESS);
                 const resolved = resolveChampionNameFromText(text, chessData);
 
                 if (resolved.name && chessData[resolved.name]) {
                     logger.debug(
-                        `[TftOperator] 商店槽位 ${i} raw OCR命中: ${resolved.name}` +
+                        `[TftOperator] 商店槽位 ${i} OCR命中: ${resolved.name}` +
                         (resolved.strategy === "FUZZY"
                             ? ` (fuzzy ${(resolved.score * 100).toFixed(1)}%)`
                             : "")
@@ -1019,17 +1047,17 @@ class TftOperator {
                 }
 
                 if (resolved.normalizedText) {
-                    logger.debug(`[TftOperator] 商店槽位 ${i} raw OCR未命中: ${resolved.normalizedText}`);
+                    logger.debug(`[TftOperator] 商店槽位 ${i} OCR未命中: ${resolved.normalizedText}`);
                 }
             } catch (error: any) {
-                logger.warn(`[TftOperator] 商店槽位 ${i} raw OCR识别失败: ${error.message}`);
+                logger.warn(`[TftOperator] 商店槽位 ${i} 识别失败: ${error.message}`);
             }
 
             results.push(null);
         }
 
         const successCount = results.filter((unit) => unit !== null).length;
-        logger.info(`[TftOperator] raw OCR 快速扫描完成: ${successCount}/5 个槽位识别成功`);
+        logger.info(`[TftOperator] 商店识别完成: ${successCount}/5 (头像+文字双识别)`);
         return results;
     }
 
