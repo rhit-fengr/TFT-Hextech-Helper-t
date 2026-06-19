@@ -117,15 +117,6 @@ function waitDecision(reason: string, nextState: AndroidForegroundProgressState)
     };
 }
 
-function resetActionCooldown(nextState: AndroidForegroundProgressState): AndroidForegroundProgressState {
-    return {
-        ...nextState,
-        stableCount: 0,
-        actionedSignatures: {},
-        actionAttempts: {},
-    };
-}
-
 export function planAndroidForegroundProgress(
     observation: AndroidForegroundObservation,
     previousState: AndroidForegroundProgressState
@@ -251,10 +242,14 @@ export function planAndroidForegroundProgress(
         if (alreadyActioned("TAP_START_QUEUE", nextState) && !shouldRetryTransientAction("TAP_START_QUEUE", nextState)) {
             const leaveRoomPoint = getActionPoint(observation, "LEAVE_ROOM");
             if (leaveRoomPoint) {
-                return waitDecision(
-                    "Lobby room start-match tap did not transition; waiting for queue cooldown before retrying start",
-                    resetActionCooldown(nextState)
-                );
+                return {
+                    decision: {
+                        kind: "TAP_LEAVE_ROOM",
+                        reason: "Lobby room start-match tap did not transition; leaving room before retrying normal-match selection",
+                        targetPoint: leaveRoomPoint,
+                    },
+                    nextState: buildNextState(observation, previousState, "TAP_LEAVE_ROOM"),
+                };
             }
 
             return {
@@ -284,6 +279,16 @@ export function planAndroidForegroundProgress(
 
         if (!selectGameModePoint) {
             return waitDecision("Mode-selection screen detected, but no game-mode action point is available", nextState);
+        }
+
+        if (observation.source === "SCREENSHOT_CLASSIFIER" && observation.verification === "VERIFIED_REAL") {
+            return {
+                decision: {
+                    kind: "BLOCKED",
+                    reason: "Real mode-selection screen detected, but normal-match mode is not text-verified; refusing blind mode-card tap",
+                },
+                nextState,
+            };
         }
 
         if (!alreadyActioned("TAP_SELECT_GAME_MODE", nextState)) {

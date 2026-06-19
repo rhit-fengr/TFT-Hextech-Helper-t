@@ -7,7 +7,7 @@
 import path from "path";
 import fs from "fs-extra";
 import sharp from "sharp";
-import cv from "@techstark/opencv-js";
+import { cv } from "opencv-wasm";
 import { logger } from "../../utils/Logger";
 import { EQUIP_CATEGORY_PRIORITY, EquipCategory, LootOrbType } from "../types";
 
@@ -314,7 +314,7 @@ export class TemplateLoader {
                 TEMPLATE_SIZE,
                 TEMPLATE_SIZE,
                 cv.CV_8UC4,
-                new cv.Scalar(0, 0, 0, 255)
+                [0, 0, 0, 255]
             );
             logger.info("[TemplateLoader] 空槽位模板创建成功");
         } catch (e) {

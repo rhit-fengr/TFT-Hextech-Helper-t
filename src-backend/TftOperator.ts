@@ -17,7 +17,7 @@ import { Region } from "@nut-tree-fork/nut-js";
 import path from "path";
 import fs from "fs-extra";
 // import sharp from "sharp";
-import type * as OpencvType from "@techstark/opencv-js";
+import { cv as OpencvType } from "opencv-wasm";
 import { getMatChannels, resizeOpenCvMat } from "./tft/recognition/OpenCvMatUtils";
 
 // Type alias for cv namespace usage in type annotations
@@ -495,11 +495,10 @@ class TftOperator {
         // 采样 OpenCV 加载前的内存
         memoryMonitor.sample("tft:opencv_before");
 
-        void import("@techstark/opencv-js")
+        void import("opencv-wasm")
             .then((mod) => {
-                // support both ESM default and CJS shapes
-                 
-                cv = ((mod as any).default ?? mod) as typeof OpencvType;
+                // opencv-wasm exports { cv, cvTranslateError }
+                cv = mod.cv as typeof OpencvType;
                 this.setupOpenCvRuntime();
                 // 采样 OpenCV 加载后的内存
                 memoryMonitor.sample("tft:opencv_after");
@@ -941,9 +940,19 @@ class TftOperator {
      * @returns 商店中的棋子数组 (空槽位为 null)
      */
     public async getShopInfoFast(): Promise<(TFTUnit | null)[]> {
+        const gameClient = settingsStore.get('gameClient') as GameClient;
+        if (gameClient === GameClient.ANDROID) {
+            return this.getShopInfoFastOcrFallback();
+        }
+
         if (!templateLoader.isReady()) {
             logger.warn("[TftOperator] 模板未加载，回退到 OCR 模式");
             return this.getShopInfo({ templateFallback: true });
+        }
+
+        if (!templateMatcher.isTemplateMatchAvailable()) {
+            logger.warn("[TftOperator] OpenCV matchTemplate 不可用，快速商店识别回退到 OCR-only 模式");
+            return this.getShopInfoFastOcrFallback();
         }
 
         logger.info("[TftOperator] 快速扫描商店 (模板匹配模式)...");
@@ -981,6 +990,46 @@ class TftOperator {
         const results = await Promise.all(slotPromises);
         const successCount = results.filter((r) => r !== null).length;
         logger.info(`[TftOperator] 快速扫描完成: ${successCount}/5 个槽位识别成功`);
+        return results;
+    }
+
+    private async getShopInfoFastOcrFallback(): Promise<(TFTUnit | null)[]> {
+        logger.info("[TftOperator] 快速扫描商店 (raw OCR 回退模式)...");
+        const chessData = this.getActiveChessData();
+        const results: (TFTUnit | null)[] = [];
+
+        for (let i = 1; i <= 5; i++) {
+            const slotKey = `SLOT_${i}` as keyof typeof shopSlotNameRegions;
+            const region = this.getShopNameAbsoluteRegion(slotKey);
+
+            try {
+                const rawPng = await screenCapture.captureRegionAsPng(region, false);
+                const text = await ocrService.recognize(rawPng, OcrWorkerType.CHESS);
+                const resolved = resolveChampionNameFromText(text, chessData);
+
+                if (resolved.name && chessData[resolved.name]) {
+                    logger.debug(
+                        `[TftOperator] 商店槽位 ${i} raw OCR命中: ${resolved.name}` +
+                        (resolved.strategy === "FUZZY"
+                            ? ` (fuzzy ${(resolved.score * 100).toFixed(1)}%)`
+                            : "")
+                    );
+                    results.push(chessData[resolved.name]);
+                    continue;
+                }
+
+                if (resolved.normalizedText) {
+                    logger.debug(`[TftOperator] 商店槽位 ${i} raw OCR未命中: ${resolved.normalizedText}`);
+                }
+            } catch (error: any) {
+                logger.warn(`[TftOperator] 商店槽位 ${i} raw OCR识别失败: ${error.message}`);
+            }
+
+            results.push(null);
+        }
+
+        const successCount = results.filter((unit) => unit !== null).length;
+        logger.info(`[TftOperator] raw OCR 快速扫描完成: ${successCount}/5 个槽位识别成功`);
         return results;
     }
 

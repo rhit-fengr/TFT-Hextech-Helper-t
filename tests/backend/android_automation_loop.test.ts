@@ -123,6 +123,18 @@ function levelUpAction(): ActionPlan {
     };
 }
 
+function rollAction(): ActionPlan {
+    return {
+        tick: 0,
+        type: "ROLL",
+        priority: 82,
+        reason: "D牌找质量",
+        payload: {
+            count: 2,
+        },
+    };
+}
+
 test("AndroidAutomationLoop skips execution when stage is unknown", async () => {
     const adapter = new FakeAdapter([
         buildState({
@@ -256,6 +268,43 @@ test("AndroidAutomationLoop preserves level maintenance with loot when unknown-s
     assert.equal(result.status, "EXECUTED");
     assert.equal(adapter.executeCalls.length, 1);
     assert.deepEqual(adapter.executeCalls[0]?.map((action) => action.type), ["PICK_LOOT", "LEVEL_UP"]);
+    assert.equal(result.verification?.ok, true);
+});
+
+test("AndroidAutomationLoop filters shop-dependent actions when Android shop OCR has no offers", async () => {
+    const before = buildState({
+        stageText: "3-3",
+        stageType: GameStageType.PVP,
+        level: 5,
+        currentXp: 2,
+        totalXp: 20,
+        gold: 95,
+        shop: [
+            { slot: 0, cost: null, unit: null },
+            { slot: 1, cost: null, unit: null },
+            { slot: 2, cost: null, unit: null },
+            { slot: 3, cost: null, unit: null },
+            { slot: 4, cost: null, unit: null },
+        ],
+        metadata: { hasValidStage: true },
+    });
+    const after = buildState({
+        ...before,
+        currentXp: 6,
+        gold: 91,
+    });
+    const adapter = new FakeAdapter([before, after]);
+    const loop = new AndroidAutomationLoop({
+        adapter,
+        engine: new StaticEngine([levelUpAction(), rollAction(), buyAction()]),
+        dryRun: false,
+    });
+
+    const result = await loop.runOnce();
+
+    assert.equal(result.status, "EXECUTED");
+    assert.equal(adapter.executeCalls.length, 1);
+    assert.deepEqual(adapter.executeCalls[0]?.map((action) => action.type), ["LEVEL_UP"]);
     assert.equal(result.verification?.ok, true);
 });
 

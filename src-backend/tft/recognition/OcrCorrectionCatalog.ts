@@ -9,6 +9,8 @@ export const BUILTIN_OCR_CORRECTIONS: TftOcrCorrectionEntry[] = [
     { incorrect: "丽桑蛙", correct: "丽桑卓", context: "shop" },
     { incorrect: "卡宝尔", correct: "卡密尔", context: "shop" },
     { incorrect: "卡室尔", correct: "卡密尔", context: "shop" },
+    { incorrect: "和杰", correct: "潘森", context: "shop" },
+    { incorrect: "庄奇", correct: "库奇", context: "shop" },
 ];
 
 export function mergeOcrCorrections(...groups: TftOcrCorrectionEntry[][]): TftOcrCorrectionEntry[] {

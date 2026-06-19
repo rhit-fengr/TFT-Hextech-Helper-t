@@ -166,24 +166,39 @@ export class AndroidAdbCapture {
             return this.adbPath;
         }
 
+        const requestedSerial = process.env.TFT_ADB_SERIAL?.trim();
+        const envAdbPath = process.env.TFT_ADB_PATH?.trim();
         const candidates = [
-            process.env.TFT_ADB_PATH,
+            envAdbPath,
             "C:\\Program Files\\BlueStacks_nxt\\HD-Adb.exe",
             "C:\\Program Files\\BlueStacks\\HD-Adb.exe",
         ].filter(Boolean) as string[];
 
         for (const candidate of candidates) {
             try {
-                await fs.access(candidate);
+                if (candidate !== envAdbPath) {
+                    await fs.access(candidate);
+                }
                 // 验证该 adb 是否真的有已连接的设备
                 try {
                     const { stdout } = await execFileAsync(candidate as string, ["devices"], { timeout: 5000 });
-                    const hasDevice = stdout.split(/\r?\n/).some((line) => line.trim().endsWith("\tdevice"));
+                    const devices = stdout
+                        .split(/\r?\n/)
+                        .map((line) => line.trim())
+                        .filter((line) => line.endsWith("\tdevice"))
+                        .map((line) => line.split(/\s+/)[0]);
+                    const hasDevice = requestedSerial
+                        ? devices.includes(requestedSerial)
+                        : devices.length > 0;
                     if (hasDevice) {
                         this.adbPath = candidate;
                         return candidate;
                     }
-                    logger.debug(`[AndroidAdbCapture] ${candidate} 存在但无可用设备，跳过`);
+                    logger.debug(
+                        requestedSerial
+                            ? `[AndroidAdbCapture] ${candidate} 未发现 TFT_ADB_SERIAL=${requestedSerial}，跳过`
+                            : `[AndroidAdbCapture] ${candidate} 存在但无可用设备，跳过`
+                    );
                 } catch {
                     logger.debug(`[AndroidAdbCapture] ${candidate} devices 调用失败，跳过`);
                 }
@@ -197,13 +212,24 @@ export class AndroidAdbCapture {
             // 同样验证系统 adb 有设备
             try {
                 const { stdout } = await execFileAsync("adb", ["devices"], { timeout: 5000 });
-                const hasDevice = stdout.split(/\r?\n/).some((line) => line.trim().endsWith("\tdevice"));
+                const devices = stdout
+                    .split(/\r?\n/)
+                    .map((line) => line.trim())
+                    .filter((line) => line.endsWith("\tdevice"))
+                    .map((line) => line.split(/\s+/)[0]);
+                const hasDevice = requestedSerial
+                    ? devices.includes(requestedSerial)
+                    : devices.length > 0;
                 if (hasDevice) {
                     this.adbPath = "adb";
                     return "adb";
                 }
             } catch {
                 // 继续尝试
+            }
+            if (requestedSerial) {
+                logger.warn(`[AndroidAdbCapture] 未找到包含 TFT_ADB_SERIAL=${requestedSerial} 的 ADB 可执行文件`);
+                return null;
             }
             // 即使没有验证到设备，也回退到系统 adb（兼容旧行为）
             this.adbPath = "adb";
@@ -228,7 +254,22 @@ export class AndroidAdbCapture {
                 logger.warn(`[AndroidAdbCapture] ADB 没有可用设备 (adb=${adbPath})`);
                 return null;
             }
-            // 不再硬编码优先 127.0.0.1，直接用第一个可用设备
+
+            const requestedSerial = process.env.TFT_ADB_SERIAL?.trim();
+            if (requestedSerial) {
+                const requestedLine = lines.find((line) => line.split(/\s+/)[0] === requestedSerial);
+                if (!requestedLine) {
+                    logger.warn(
+                        `[AndroidAdbCapture] TFT_ADB_SERIAL=${requestedSerial} 不在可用设备列表中: ` +
+                        `${lines.map((line) => line.split(/\s+/)[0]).join(", ")}`
+                    );
+                    return null;
+                }
+                this.serial = requestedSerial;
+                logger.info(`[AndroidAdbCapture] ADB 设备已按 TFT_ADB_SERIAL 选定: ${this.serial} (adb=${adbPath})`);
+                return this.serial;
+            }
+
             this.serial = lines[0].split(/\s+/)[0];
             logger.info(`[AndroidAdbCapture] ADB 设备已选定: ${this.serial} (adb=${adbPath})`);
             return this.serial;

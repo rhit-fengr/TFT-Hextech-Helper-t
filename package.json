@@ -43,11 +43,11 @@
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",
     "@nut-tree-fork/nut-js": "^4.2.6",
-    "@techstark/opencv-js": "^4.12.0-release.1",
     "axios": "^1.12.2",
     "bufferutil": "^4.0.9",
     "chokidar": "^4.0.3",
     "electron-store": "^11.0.2",
+    "opencv-wasm": "^4.3.0-10",
     "sharp": "^0.34.5",
     "tesseract.js": "^6.0.1",
     "uiohook-napi": "^1.5.4",

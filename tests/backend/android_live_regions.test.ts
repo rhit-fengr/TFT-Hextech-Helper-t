@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import cv from "@techstark/opencv-js";
+import { cv } from "opencv-wasm";
 import sharp from "sharp";
 import {
     androidEquipmentRegion,

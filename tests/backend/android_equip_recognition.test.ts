@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import fs from "node:fs/promises";
-import cv from "@techstark/opencv-js";
+import { cv } from "opencv-wasm";
 import { templateLoader, templateMatcher, screenCapture } from "../../src-backend/tft";
 import { getSeasonTemplateDir, TFTMode } from "../../src-backend/TFTProtocol";
 

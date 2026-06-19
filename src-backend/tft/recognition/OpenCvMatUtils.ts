@@ -1,14 +1,14 @@
-import type * as OpencvType from "@techstark/opencv-js";
+import { cv } from "opencv-wasm";
 
-type MatWithOptionalChannels = OpencvType.Mat & {
+type MatWithOptionalChannels = cv.Mat & {
     channels?: (() => number) | number;
     type?: (() => number) | number;
     convertTo?: unknown;
     data?: Uint8Array | Uint8ClampedArray;
 };
 
-type OpenCvSizeConstructor = new(width: number, height: number) => OpencvType.Size;
-type OpenCvSizeFactory = (width: number, height: number) => OpencvType.Size;
+type OpenCvSizeConstructor = new(width: number, height: number) => cv.Size;
+type OpenCvSizeFactory = (width: number, height: number) => cv.Size;
 type OpenCvModuleWithOptionalSize = {
     Size?: unknown;
 };
@@ -20,7 +20,7 @@ type OpenCvModuleWithOptionalResize = OpenCvModuleWithOptionalSize & {
  * OpenCV.js builds and test doubles do not expose Mat#channels consistently.
  * Prefer the native method, then infer from data shape before falling back.
  */
-export function getMatChannels(mat: OpencvType.Mat): number {
+export function getMatChannels(mat: cv.Mat): number {
     const maybeMat = mat as MatWithOptionalChannels;
     const nativeChannels = maybeMat.channels;
     if (typeof nativeChannels === "function") {
@@ -39,7 +39,7 @@ export function getMatChannels(mat: OpencvType.Mat): number {
         }
     }
 
-    const typeValue = typeof maybeMat.type === "function" ? maybeMat.type.call(mat) : maybeMat.type;
+    const typeValue = typeof (maybeMat as any).type === "function" ? (maybeMat as any).type.call(mat) : (maybeMat as any).type;
     if (typeof typeValue === "number" && typeValue >= 0) {
         const openCvChannels = ((typeValue >> 3) & 63) + 1;
         if (openCvChannels === 1 || openCvChannels === 3 || openCvChannels === 4) {
@@ -50,11 +50,11 @@ export function getMatChannels(mat: OpencvType.Mat): number {
     return 4;
 }
 
-export function getMatType(mat: OpencvType.Mat): number {
+export function getMatType(mat: cv.Mat): number {
     const maybeMat = mat as MatWithOptionalChannels;
-    const nativeType = maybeMat.type;
+    const nativeType = (maybeMat as { type?: unknown }).type;
     if (typeof nativeType === "function") {
-        return nativeType.call(mat);
+        return (nativeType as () => number).call(mat);
     }
     if (typeof nativeType === "number" && nativeType >= 0) {
         return nativeType;
@@ -67,7 +67,7 @@ export function createOpenCvSize(
     cvModule: OpenCvModuleWithOptionalSize,
     width: number,
     height: number
-): OpencvType.Size {
+): cv.Size {
     const Size = cvModule.Size;
     if (typeof Size === "function") {
         try {
@@ -77,13 +77,13 @@ export function createOpenCvSize(
         }
     }
 
-    return { width, height } as OpencvType.Size;
+    return { width, height } as cv.Size;
 }
 
 export function resizeOpenCvMat(
     cvModule: OpenCvModuleWithOptionalResize,
-    source: OpencvType.Mat,
-    destination: OpencvType.Mat,
+    source: cv.Mat,
+    destination: cv.Mat,
     width: number,
     height: number,
     interpolation: number
@@ -104,8 +104,8 @@ export function resizeOpenCvMat(
 }
 
 export function convertOpenCvMatType(
-    source: OpencvType.Mat,
-    destination: OpencvType.Mat,
+    source: cv.Mat,
+    destination: cv.Mat,
     targetType: number
 ): boolean {
     const convertTo = (source as MatWithOptionalChannels).convertTo;

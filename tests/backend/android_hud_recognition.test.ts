@@ -386,13 +386,18 @@ test("android shop OCR recognizes current live shop names with dynamic champion 
         };
     }
 
-    const framePath = path.resolve(process.cwd(), "reports", "goal-continue-current-after-continued.png");
+    const framePath = path.resolve(
+        process.cwd(),
+        "reports",
+        "bluestacks-match-observe-20260618",
+        "after-shop-channel-fix.png"
+    );
     const expected: Record<keyof typeof androidShopSlotNameRegions, string> = {
-        SLOT_1: "蕾欧娜",
-        SLOT_2: "伊泽瑞尔",
-        SLOT_3: "纳尔",
-        SLOT_4: "潘森",
-        SLOT_5: "丽桑卓",
+        SLOT_1: "亚托克斯",
+        SLOT_2: "潘森",
+        SLOT_3: "菲兹",
+        SLOT_4: "库奇",
+        SLOT_5: "蕾欧娜",
     };
 
     for (const [slot, expectedName] of Object.entries(expected)) {

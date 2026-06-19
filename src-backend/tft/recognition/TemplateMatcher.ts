@@ -4,7 +4,7 @@
  * @author TFT-Hextech-Helper
  */
 
-import cv from "@techstark/opencv-js";
+import { cv } from "opencv-wasm";
 import {logger} from "../../utils/Logger";
 import {IdentifiedEquip, EQUIP_CATEGORY_PRIORITY, LootOrb} from "../types";
 import {TFT_16_EQUIP_DATA} from "../../TFTProtocol";
@@ -94,6 +94,10 @@ export class TemplateMatcher {
             TemplateMatcher.instance = new TemplateMatcher();
         }
         return TemplateMatcher.instance;
+    }
+
+    public isTemplateMatchAvailable(): boolean {
+        return typeof (cv as typeof cv & { matchTemplate?: unknown }).matchTemplate === "function";
     }
 
     // ========== 公共匹配方法 ==========
@@ -432,11 +436,11 @@ export class TemplateMatcher {
                     continue;
                 }
 
-                // 通道检查 (防止崩溃)
-                const templateType = getMatType(templateMat);
-                const targetType = getMatType(preparedTarget);
-                if (templateType !== targetType) {
-                    logger.warn(`[TemplateMatcher] 通道类型不匹配: ${name} (${templateType}) vs 目标 (${targetType})`);
+                // ADB frame-provider 下 Mat#type() 可能漂移；英雄名模板与目标都已灰度化时按通道数判断。
+                const templateChannels = getMatChannels(templateMat);
+                const targetChannels = getMatChannels(preparedTarget);
+                if (templateChannels !== targetChannels) {
+                    logger.warn(`[TemplateMatcher] 通道不匹配: ${name} (${templateChannels}) vs 目标 (${targetChannels})`);
                     continue;
                 }
 

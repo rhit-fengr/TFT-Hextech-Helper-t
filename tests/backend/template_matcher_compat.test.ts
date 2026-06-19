@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type cv from "@techstark/opencv-js";
+import { cv } from "opencv-wasm";
 import { convertOpenCvMatType, createOpenCvSize, getMatType, resizeOpenCvMat } from "../../src-backend/tft/recognition/OpenCvMatUtils";
 import { templateMatcher } from "../../src-backend/tft/recognition/TemplateMatcher";
 
@@ -19,6 +19,10 @@ test("template matcher empty-slot check works without OpenCV meanStdDev", () => 
 
     assert.equal(templateMatcher.isEmptySlot(flatMat), true);
     assert.equal(templateMatcher.isEmptySlot(variedMat), false);
+});
+
+test("template matcher exposes matchTemplate availability", () => {
+    assert.equal(typeof templateMatcher.isTemplateMatchAvailable(), "boolean");
 });
 
 test("OpenCV mat helpers tolerate property-style type and missing Size constructor", () => {

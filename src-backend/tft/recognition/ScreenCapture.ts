@@ -6,7 +6,7 @@
 
 import { Region, screen as nutScreen } from "@nut-tree-fork/nut-js";
 import sharp from "sharp";
-import cv from "@techstark/opencv-js";
+import { cv } from "opencv-wasm";
 import { SimpleRegion } from "../types";
 import { SimplePoint } from "../../TFTProtocol";
 

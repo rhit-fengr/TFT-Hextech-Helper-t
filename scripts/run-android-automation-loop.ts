@@ -146,6 +146,7 @@ function isSafeForegroundTapDecision(
         decision.kind === "TAP_SELECT_GAME_MODE" ||
         decision.kind === "TAP_CONFIRM_MODAL" ||
         decision.kind === "TAP_START_QUEUE" ||
+        decision.kind === "TAP_LEAVE_ROOM" ||
         decision.kind === "TAP_ACCEPT_READY" ||
         decision.kind === "TAP_GAME_OVER_EXIT"
     );

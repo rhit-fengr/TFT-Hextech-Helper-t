@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
-import cv from "@techstark/opencv-js";
+import { cv } from "opencv-wasm";
 import sharp from "sharp";
 import { logger } from "../utils/Logger";
 import { equipmentNamesMatch, normalizeEquipmentName } from "../data/TftNameNormalizer";

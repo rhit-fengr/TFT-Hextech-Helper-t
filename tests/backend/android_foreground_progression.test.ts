@@ -139,7 +139,7 @@ test("android foreground progression retries lobby start with a cap", () => {
     assert.equal(fifth.decision.kind, "BLOCKED");
 });
 
-test("android foreground progression cools down room start retries instead of forcing a leave tap", () => {
+test("android foreground progression leaves room after capped room start retries", () => {
     const observation = createObservation({
         state: "LOBBY",
         actionPoints: {
@@ -152,18 +152,13 @@ test("android foreground progression cools down room start retries instead of fo
     const second = planAndroidForegroundProgress(observation, first.nextState);
     const third = planAndroidForegroundProgress(observation, second.nextState);
     const fourth = planAndroidForegroundProgress(observation, third.nextState);
-    const fifth = planAndroidForegroundProgress(observation, fourth.nextState);
-    const sixth = planAndroidForegroundProgress(observation, fifth.nextState);
-    const seventh = planAndroidForegroundProgress(observation, sixth.nextState);
 
     assert.equal(first.decision.kind, "TAP_START_QUEUE");
     assert.equal(second.decision.kind, "TAP_START_QUEUE");
     assert.equal(third.decision.kind, "TAP_START_QUEUE");
-    assert.equal(fourth.decision.kind, "WAIT");
-    assert.match(fourth.decision.reason, /cooldown/i);
-    assert.equal(fifth.decision.kind, "TAP_START_QUEUE");
-    assert.equal(sixth.decision.kind, "TAP_START_QUEUE");
-    assert.equal(seventh.decision.kind, "TAP_START_QUEUE");
+    assert.equal(fourth.decision.kind, "TAP_LEAVE_ROOM");
+    assert.deepEqual(fourth.decision.targetPoint, { x: 0.24, y: 0.14 });
+    assert.match(fourth.decision.reason, /leaving room/i);
 });
 
 test("android foreground progression dismisses open lobby side menu before queueing", () => {
@@ -231,6 +226,23 @@ test("android foreground progression selects game mode before starting queue", (
     assert.deepEqual(second.decision.targetPoint, { x: 0.84, y: 0.90 });
     assert.equal(third.decision.kind, "WAIT");
     assert.match(third.decision.reason, /Mode-selection actions already issued/i);
+});
+
+test("android foreground progression blocks blind mode-card taps on real screenshots", () => {
+    const observation = createObservation({
+        state: "MODE_SELECT",
+        source: "SCREENSHOT_CLASSIFIER",
+        verification: "VERIFIED_REAL",
+        actionPoints: {
+            SELECT_GAME_MODE: { x: 0.35, y: 0.66 },
+            START_QUEUE: { x: 0.84, y: 0.90 },
+        },
+    });
+
+    const result = planAndroidForegroundProgress(observation, createInitialAndroidForegroundProgressState());
+
+    assert.equal(result.decision.kind, "BLOCKED");
+    assert.match(result.decision.reason, /normal-match mode is not text-verified/i);
 });
 
 test("android foreground progression can requeue after ready-check returns to lobby", () => {

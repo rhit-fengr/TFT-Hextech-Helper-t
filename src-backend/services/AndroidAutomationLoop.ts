@@ -164,6 +164,14 @@ function isExecutableAction(action: ActionPlan): boolean {
     return action.type !== "NOOP";
 }
 
+function hasRecognizedShopOffer(state: ObservedState): boolean {
+    return state.shop.some((offer) => offer.unit !== null);
+}
+
+function isShopDependentAction(action: ActionPlan): boolean {
+    return action.type === "BUY" || action.type === "ROLL";
+}
+
 function buildActionSignature(actions: ActionPlan[]): string {
     return actions
         .filter(isExecutableAction)
@@ -302,7 +310,10 @@ export class AndroidAutomationLoop {
             });
         }
 
-        const generatedPlans = this.engine.generatePlan(beforeState, this.context);
+        const rawGeneratedPlans = this.engine.generatePlan(beforeState, this.context);
+        const generatedPlans = hasRecognizedShopOffer(beforeState)
+            ? rawGeneratedPlans
+            : rawGeneratedPlans.filter((plan) => !isShopDependentAction(plan));
         const plans = allowLootOnlyMaintenance && allowLevelOnlyMaintenance
             ? generatedPlans.filter((plan) => plan.type === "PICK_LOOT" || plan.type === "LEVEL_UP")
             : allowLootOnlyMaintenance
