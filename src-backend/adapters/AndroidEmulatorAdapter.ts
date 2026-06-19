@@ -2,13 +2,14 @@ import {
     fightBoardSlotPoint,
     GameStageType,
     hexSlot,
+    benchSlotPoints,
     type GameStageResult,
     type SimplePoint,
 } from "../TFTProtocol";
 import { tftOperator } from "../TftOperator";
 import { androidAdbCapture } from "../services/AndroidAdbCapture";
 import type { BenchLocation, BoardLocation, LootOrb } from "../tft";
-import { mouseController, MouseButtonType, screenCapture } from "../tft";
+import { mouseController, MouseButtonType, screenCapture, templateLoader, templateMatcher } from "../tft";
 import { sleep } from "../utils/HelperTools";
 import { logger } from "../utils/Logger";
 import { GameClient } from "../utils/SettingsStore";
@@ -379,6 +380,20 @@ export class AndroidEmulatorAdapter implements GameAdapter {
                 return [];
             }
 
+            // 第一优先：模板匹配法球（更精确）
+            if (templateLoader.isReady() && templateMatcher.isTemplateMatchAvailable()) {
+                try {
+                    const templateOrbs = await tftOperator.getLootOrbs();
+                    if (templateOrbs.length > 0) {
+                        logger.info(`[AndroidEmulatorAdapter] 模板匹配检测到 ${templateOrbs.length} 个战利品球`);
+                        return templateOrbs;
+                    }
+                } catch (error: unknown) {
+                    logger.debug(`[AndroidEmulatorAdapter] 模板匹配法球失败: ${error instanceof Error ? error.message : String(error)}`);
+                }
+            }
+
+            // 第二优先：视觉兜底检测
             const screenshot = await androidAdbCapture.capturePng();
             if (screenshot) {
                 const visualOrbs = await detectAndroidLootOrbsFromScreenshot(screenshot);
@@ -395,7 +410,7 @@ export class AndroidEmulatorAdapter implements GameAdapter {
         }
     }
 
-    private async pickUpLootOrbs(maxCount: number = 4): Promise<void> {
+    private async pickUpLootOrbs(maxCount: number = 8): Promise<void> {
         await this.returnToOwnBoardBeforeLootIfNeeded();
         const lootOrbs = await this.readLootOrbs();
         if (lootOrbs.length === 0) {
@@ -420,7 +435,7 @@ export class AndroidEmulatorAdapter implements GameAdapter {
                 }
                 return left.x - right.x;
             })
-            .slice(0, Math.max(1, Math.min(6, maxCount)));
+            .slice(0, Math.max(1, Math.min(8, maxCount)));
 
         logger.info(`[AndroidEmulatorAdapter] PICK_LOOT 准备拾取 ${sortedOrbs.length}/${lootOrbs.length} 个战利品球`);
         for (const orb of sortedOrbs) {
@@ -430,7 +445,18 @@ export class AndroidEmulatorAdapter implements GameAdapter {
             if (!tapped) {
                 await mouseController.clickAt({ x: orb.x, y: orb.y }, MouseButtonType.RIGHT);
             }
-            await sleep(900);
+            await sleep(600);  // 缩短等待时间，提高拾取效率
+        }
+
+        // 重试一次：如果检测到的球比实际少，再检测一轮
+        const retryOrbs = await this.readLootOrbs();
+        if (retryOrbs.length > 0) {
+            logger.info(`[AndroidEmulatorAdapter] PICK_LOOT 重试：检测到 ${retryOrbs.length} 个剩余球`);
+            for (const orb of retryOrbs.slice(0, 4)) {
+                const tapPoint = await normalizeAndroidTapPoint({ x: orb.x, y: orb.y });
+                await androidAdbCapture.tapRelative(tapPoint);
+                await sleep(600);
+            }
         }
     }
 
@@ -592,8 +618,27 @@ export class AndroidEmulatorAdapter implements GameAdapter {
                     await this.pickUpLootOrbs(maxCount);
                     break;
                 }
+                case "SELL": {
+                    const sellLocation = action.payload.location as string;
+                    if (sellLocation) {
+                        const fromBench = sellLocation.startsWith("SLOT_");
+                        const fromBoard = sellLocation.startsWith("R");
+                        if (fromBench || fromBoard) {
+                            const fromPoint = fromBench
+                                ? benchSlotPoints[sellLocation as keyof typeof benchSlotPoints]
+                                : fightBoardSlotPoint[sellLocation as keyof typeof fightBoardSlotPoint];
+                            if (fromPoint) {
+                                // Android 卖出：长按棋子拖到商店区域（SLOT_3 位置）
+                                const sellPoint = androidShopSlotPoints.SHOP_SLOT_3;
+                                await androidAdbCapture.swipeRelative(fromPoint, sellPoint, 600);
+                                await sleep(500);
+                                logger.info(`[AndroidEmulatorAdapter] SELL ${sellLocation} → 商店区域`);
+                            }
+                        }
+                    }
+                    break;
+                }
                 case "NOOP":
-                case "SELL":
                 default:
                     break;
             }

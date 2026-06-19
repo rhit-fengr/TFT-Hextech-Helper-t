@@ -660,6 +660,19 @@ export class RuleBasedDecisionEngine implements DecisionEngine {
             }
         }
 
+        // 备战席满员时卖掉非目标低费单位腾格子（确保法球/购买有空间）
+        if (isBenchOverflowed(state)) {
+            const sellCandidate = [...state.bench]
+                .filter((unit) => !targetNames.has(unit.name))
+                .sort((a, b) => (a.cost ?? 99) - (b.cost ?? 99) || a.star - b.star)[0];
+            if (sellCandidate?.location) {
+                addPlan("SELL", 74, `备战席 9/9 满员，卖掉非目标低费单位 ${sellCandidate.name} (${sellCandidate.cost ?? '?'}费) 腾格子`, {
+                    location: sellCandidate.location,
+                    champion: sellCandidate.name,
+                });
+            }
+        }
+
         if (state.stageType === GameStageType.PVP) {
             const keyStabilizeRound = isKeyRound(parsed, 3, 2) || isKeyRound(parsed, 4, 2);
             const lateRollDownRound = isKeyRound(parsed, 4, 5) || isKeyRound(parsed, 5, 1);
