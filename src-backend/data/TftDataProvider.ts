@@ -329,11 +329,12 @@ export class TftDataProvider {
     ): TftChampionData[] {
         const byName = new Map<string, TftChampionData>();
 
-        for (const champion of primary) {
+        // 先加本地回退数据，再加 API 数据（API 覆盖本地，保证最新）
+        for (const champion of fallback) {
             byName.set(champion.name, champion);
         }
 
-        for (const champion of fallback) {
+        for (const champion of primary) {
             byName.set(champion.name, champion);
         }
 
