@@ -137,27 +137,27 @@ export const androidDetailChampionNameRegion = {
     rightBottom: { x: 0.920, y: 0.250 }
 }
 
-// 安卓真机商店卡牌中的名称区域（基于 2026-03-15 真机录屏校准）
+// 安卓真机商店卡牌中的名称区域（基于 2026-06-18 录屏校准）
 export const androidShopSlotNameRegions = {
     SLOT_1: {
-        leftTop: { x: 0.135, y: 0.350 },
-        rightBottom: { x: 0.225, y: 0.405 }
+        leftTop: { x: 0.145, y: 0.160 },
+        rightBottom: { x: 0.220, y: 0.230 }
     },
     SLOT_2: {
-        leftTop: { x: 0.305, y: 0.350 },
-        rightBottom: { x: 0.420, y: 0.405 }
+        leftTop: { x: 0.260, y: 0.160 },
+        rightBottom: { x: 0.345, y: 0.230 }
     },
     SLOT_3: {
-        leftTop: { x: 0.480, y: 0.350 },
-        rightBottom: { x: 0.550, y: 0.405 }
+        leftTop: { x: 0.390, y: 0.160 },
+        rightBottom: { x: 0.475, y: 0.230 }
     },
     SLOT_4: {
-        leftTop: { x: 0.655, y: 0.350 },
-        rightBottom: { x: 0.735, y: 0.405 }
+        leftTop: { x: 0.525, y: 0.160 },
+        rightBottom: { x: 0.595, y: 0.230 }
     },
     SLOT_5: {
-        leftTop: { x: 0.825, y: 0.350 },
-        rightBottom: { x: 0.900, y: 0.405 }
+        leftTop: { x: 0.650, y: 0.160 },
+        rightBottom: { x: 0.720, y: 0.230 }
     },
 }
 
@@ -546,9 +546,9 @@ export const benchSlotPoints = {
 }
 //  海克斯选择槽位（百分比形式）
 export const hexSlot = {
-    SLOT_1: { x: 0.2100, y: 0.5339 },   // 原 215, 410
-    SLOT_2: { x: 0.4980, y: 0.5339 },   // 原 510, 410
-    SLOT_3: { x: 0.7861, y: 0.5339 },   // 原 805, 410
+    SLOT_1: { x: 0.203, y: 0.472 },   // 实测 (260, 340) @ 1280x720
+    SLOT_2: { x: 0.500, y: 0.472 },   // 实测 (640, 340)
+    SLOT_3: { x: 0.797, y: 0.472 },   // 实测 (1020, 340)
 }
 
 //  选秀站位，为离自己最近的棋子位置（百分比形式）
