@@ -205,6 +205,20 @@ async function persistForegroundSnapshotBuffer(
     return outputPath;
 }
 
+async function safeClassifyForegroundScreenshot(
+    screenshot: Buffer,
+    context: string
+): Promise<Awaited<ReturnType<typeof classifyAndroidWindowScreenshot>> | null> {
+    try {
+        return await classifyAndroidWindowScreenshot(screenshot);
+    } catch (error: unknown) {
+        process.stderr.write(
+            `[android:auto] ${context} classify failed: ${error instanceof Error ? error.message : String(error)}\n`
+        );
+        return null;
+    }
+}
+
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -247,7 +261,10 @@ async function tapForegroundDecision(decision: AndroidForegroundDecision & { tar
     await sleep(500);
     const screenshot = await androidAdbCapture.capturePng();
     if (screenshot) {
-        const classification = await classifyAndroidWindowScreenshot(screenshot);
+        const classification = await safeClassifyForegroundScreenshot(screenshot, "game-over-exit");
+        if (!classification) {
+            return anyTapped;
+        }
         const point = classification.gameOverExitPoint;
         if (classification.state === "GAME_OVER" && point && point.x < 0.70) {
             process.stderr.write(
@@ -274,7 +291,13 @@ async function fastPollQueueForeground(
             continue;
         }
 
-        const classification = await classifyAndroidWindowScreenshot(screenshot);
+        const classification = await safeClassifyForegroundScreenshot(
+            screenshot,
+            `queue-poll ${attempt}/60`
+        );
+        if (!classification) {
+            continue;
+        }
         const observation = normalizeAndroidForegroundObservation(classification);
         const progressResult = planAndroidForegroundProgress(observation, foregroundProgressState);
         foregroundProgressState = progressResult.nextState;
@@ -440,7 +463,13 @@ async function main(): Promise<void> {
                 try {
                     const screenshot = await androidAdbCapture.capturePng();
                     if (screenshot) {
-                        const classification = await classifyAndroidWindowScreenshot(screenshot);
+                        const classification = await safeClassifyForegroundScreenshot(
+                            screenshot,
+                            `foreground tick ${tick + 1}`
+                        );
+                        if (!classification) {
+                            continue;
+                        }
                         const observation = normalizeAndroidForegroundObservation(classification);
                         const progressResult = planAndroidForegroundProgress(observation, foregroundProgressState);
                         foregroundProgressState = progressResult.nextState;

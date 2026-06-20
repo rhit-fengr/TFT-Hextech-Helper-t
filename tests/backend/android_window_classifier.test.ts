@@ -1626,6 +1626,30 @@ test("android window classifier flags S17 star-god shop encounter choice overlay
     assert.ok(observation.anchors?.includes("augment-choice-overlay"));
 });
 
+test("android window classifier flags S17 carousel confirm encounter choice overlay", async () => {
+    const screenshot = await fs.readFile(
+        path.resolve(
+            process.cwd(),
+            "examples",
+            "recordings",
+            "android-foreground-na-captures",
+            "pending-real-captures",
+            "augment",
+            "na_s17_carousel_confirm_choice_01.png"
+        )
+    );
+
+    const result = await classifyAndroidWindowScreenshot(screenshot);
+    const observation = normalizeAndroidForegroundObservation(result);
+
+    assert.equal(result.state, "LIVE_CONTENT");
+    assert.equal(result.augmentChoiceVisible, true);
+    assert.deepEqual(result.augmentChoicePoint, { x: 0.925, y: 0.885 });
+    assert.ok((result.s17EncounterConfirmPurpleRatio ?? 0) > 0.22);
+    assert.ok((result.augmentRerollBlueRatio ?? 0) > 0.35);
+    assert.equal(observation.state, "LIVE_CONTENT");
+});
+
 test("android window classifier detects live player-list board view without gold HUD", async () => {
     const screenshot = await fs.readFile(
         path.resolve(

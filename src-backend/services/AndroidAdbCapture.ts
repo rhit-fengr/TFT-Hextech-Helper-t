@@ -20,6 +20,10 @@ function execFileBuffer(file: string, args: string[], timeout = 8000): Promise<B
     });
 }
 
+function isRecoverableAdbConnectionError(message: string): boolean {
+    return /device offline|device .*not found|no devices|closed|refused|10061/i.test(message);
+}
+
 export class AndroidAdbCapture {
     private adbPath: string | null = null;
     private serial: string | null = null;
@@ -65,7 +69,9 @@ export class AndroidAdbCapture {
             await this.updateFrameSize(screenshot);
             return screenshot;
         } catch (error: unknown) {
-            logger.warn(`[AndroidAdbCapture] ADB 截屏失败: ${error instanceof Error ? error.message : String(error)}`);
+            const message = error instanceof Error ? error.message : String(error);
+            this.resetConnectionCacheIfRecoverable(message);
+            logger.warn(`[AndroidAdbCapture] ADB 截屏失败: ${message}`);
             return null;
         }
     }
@@ -165,9 +171,22 @@ export class AndroidAdbCapture {
             await execFileAsync(adbPath, ["-s", serial, "shell", "input", ...args], { timeout: 5000 });
             return true;
         } catch (error: unknown) {
-            logger.warn(`[AndroidAdbCapture] ADB ${label}失败: ${error instanceof Error ? error.message : String(error)}`);
+            const message = error instanceof Error ? error.message : String(error);
+            this.resetConnectionCacheIfRecoverable(message);
+            logger.warn(`[AndroidAdbCapture] ADB ${label}失败: ${message}`);
             return false;
         }
+    }
+
+    private resetConnectionCacheIfRecoverable(message: string): void {
+        if (!isRecoverableAdbConnectionError(message)) {
+            return;
+        }
+
+        this.adbPath = null;
+        this.serial = null;
+        this.frameSize = null;
+        logger.warn("[AndroidAdbCapture] ADB 连接异常，已清理缓存的设备与分辨率，下次操作将重新枚举");
     }
 
     private async resolveAdbExecutable(): Promise<string | null> {

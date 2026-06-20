@@ -52,6 +52,8 @@ export interface AndroidWindowClassification {
     augmentCardDarkRatio?: number;
     augmentRerollGoldRatio?: number;
     augmentRerollBlueRatio?: number;
+    s17EncounterConfirmPurpleRatio?: number;
+    s17EncounterConfirmDarkRatio?: number;
     augmentChoiceVisible?: boolean;
     augmentChoicePoint?: SimplePoint;
     frontendVariant?: AndroidFrontendVariant;
@@ -84,6 +86,7 @@ const DISMISS_OVERLAY_ACTION_POINT: SimplePoint = { x: 0.78, y: 0.52 };
 const SETTINGS_DISMISS_ACTION_POINT: SimplePoint = { x: 0.80, y: 0.148 };
 const ENCOUNTER_CHOICE_LEFT_POINT: SimplePoint = { x: 0.273, y: 0.694 };
 const ENCOUNTER_CHOICE_RIGHT_POINT: SimplePoint = { x: 0.516, y: 0.694 };
+const S17_ENCOUNTER_CONFIRM_POINT: SimplePoint = { x: 0.925, y: 0.885 };
 
 function getLeaveRoomActionPoint(width: number, height: number): SimplePoint {
     return width / Math.max(1, height) > 1.90 ? { x: 0.24, y: 0.14 } : { x: 0.08, y: 0.06 };
@@ -418,6 +421,16 @@ export async function classifyAndroidWindowScreenshot(
         .raw()
         .toBuffer({ resolveWithObject: true });
 
+    const s17EncounterConfirmBuffer = await sharp(screenshot)
+        .extract({
+            left: Math.max(0, Math.round(width * 0.90)),
+            top: Math.max(0, Math.round(height * 0.84)),
+            width: Math.max(1, Math.round(width * 0.07)),
+            height: Math.max(1, Math.round(height * 0.10)),
+        })
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+
     let blueDominant = 0;
     let brightBlue = 0;
     let brightWhite = 0;
@@ -455,6 +468,8 @@ export async function classifyAndroidWindowScreenshot(
     let augmentCardDark = 0;
     let augmentRerollGold = 0;
     let augmentRerollBlue = 0;
+    let s17EncounterConfirmPurple = 0;
+    let s17EncounterConfirmDark = 0;
 
     for (let index = 0; index < data.length; index += info.channels) {
         const red = data[index];
@@ -716,6 +731,19 @@ export async function classifyAndroidWindowScreenshot(
         }
     }
 
+    for (let index = 0; index < s17EncounterConfirmBuffer.data.length; index += s17EncounterConfirmBuffer.info.channels) {
+        const red = s17EncounterConfirmBuffer.data[index];
+        const green = s17EncounterConfirmBuffer.data[index + 1];
+        const blue = s17EncounterConfirmBuffer.data[index + 2];
+
+        if (blue > 120 && red > 55 && red < 210 && green < 150) {
+            s17EncounterConfirmPurple += 1;
+        }
+        if (red < 65 && green < 65 && blue < 90) {
+            s17EncounterConfirmDark += 1;
+        }
+    }
+
     const liveHudGoldBuffer = await sharp(screenshot)
         .extract({
             left: Math.max(0, Math.round(width * 0.80)),
@@ -777,6 +805,7 @@ export async function classifyAndroidWindowScreenshot(
     const gameOverResultTitlePixelCount = Math.max(1, gameOverResultTitleBuffer.info.width * gameOverResultTitleBuffer.info.height);
     const augmentCardPixelCount = Math.max(1, augmentCardBuffer.info.width * augmentCardBuffer.info.height);
     const augmentRerollPixelCount = Math.max(1, augmentRerollBuffer.info.width * augmentRerollBuffer.info.height);
+    const s17EncounterConfirmPixelCount = Math.max(1, s17EncounterConfirmBuffer.info.width * s17EncounterConfirmBuffer.info.height);
     const liveHudGoldPixelCount = Math.max(1, liveHudGoldBuffer.info.width * liveHudGoldBuffer.info.height);
     const liveHudScorePixelCount = Math.max(1, liveHudScoreBuffer.info.width * liveHudScoreBuffer.info.height);
     const blueDominantRatio = blueDominant / pixelCount;
@@ -814,6 +843,8 @@ export async function classifyAndroidWindowScreenshot(
     const augmentCardDarkRatio = augmentCardDark / augmentCardPixelCount;
     const augmentRerollGoldRatio = augmentRerollGold / augmentRerollPixelCount;
     const augmentRerollBlueRatio = augmentRerollBlue / augmentRerollPixelCount;
+    const s17EncounterConfirmPurpleRatio = s17EncounterConfirmPurple / s17EncounterConfirmPixelCount;
+    const s17EncounterConfirmDarkRatio = s17EncounterConfirmDark / s17EncounterConfirmPixelCount;
     const liveHudGoldSignalRatio = liveHudGoldSignal / liveHudGoldPixelCount;
     const liveHudScoreSignalRatio = liveHudScoreSignal / liveHudScorePixelCount;
 
@@ -1591,6 +1622,19 @@ export async function classifyAndroidWindowScreenshot(
         modeSelectBlueRatio < 0.005 &&
         progressDarkRatio > 0.56 &&
         progressDarkRatio < 0.62;
+    const s17CarouselConfirmEncounterChoiceVisible =
+        augmentCardPurpleRatio > 0.18 &&
+        augmentCardPurpleRatio < 0.27 &&
+        augmentCardDarkRatio > 0.16 &&
+        augmentCardDarkRatio < 0.26 &&
+        augmentRerollBlueRatio > 0.35 &&
+        liveHudScoreSignalRatio > 0.12 &&
+        modeSelectBlueRatio > 0.18 &&
+        gameOverResultExitBlueRatio > 0.18 &&
+        progressDarkRatio > 0.08 &&
+        progressDarkRatio < 0.20 &&
+        s17EncounterConfirmPurpleRatio > 0.22 &&
+        s17EncounterConfirmDarkRatio > 0.45;
     const encounterChoiceVisible =
         brightEncounterChoiceVisible ||
         darkEncounterChoiceVisible ||
@@ -1613,10 +1657,12 @@ export async function classifyAndroidWindowScreenshot(
         duelStarGodEncounterChoiceVisible ||
         lowPurpleDuelStarGodEncounterChoiceVisible ||
         singleEncounterChoiceVisible ||
-        s17StarGodShopEncounterChoiceVisible;
+        s17StarGodShopEncounterChoiceVisible ||
+        s17CarouselConfirmEncounterChoiceVisible;
     const augmentChoiceVisible = standardAugmentChoiceVisible || encounterChoiceVisible;
     if (encounterChoiceVisible) {
-        augmentChoicePoint = starGodEncounterChoiceVisible ||
+        const shouldUseRightEncounterChoicePoint =
+            starGodEncounterChoiceVisible ||
             illustratedStarGodEncounterChoiceVisible ||
             starGuardianEncounterChoiceVisible ||
             versusStarGodEncounterChoiceVisible ||
@@ -1635,7 +1681,11 @@ export async function classifyAndroidWindowScreenshot(
             shopStarGodEncounterChoiceVisible ||
             pinkBlueStarGodItemEncounterChoiceVisible ||
             s17StarGodShopEncounterChoiceVisible ||
-            singleEncounterChoiceVisible
+            singleEncounterChoiceVisible;
+
+        augmentChoicePoint = s17CarouselConfirmEncounterChoiceVisible
+            ? S17_ENCOUNTER_CONFIRM_POINT
+            : shouldUseRightEncounterChoicePoint
             ? ENCOUNTER_CHOICE_RIGHT_POINT
             : ENCOUNTER_CHOICE_LEFT_POINT;
     }
@@ -3479,6 +3529,8 @@ export async function classifyAndroidWindowScreenshot(
         augmentCardDarkRatio,
         augmentRerollGoldRatio,
         augmentRerollBlueRatio,
+        s17EncounterConfirmPurpleRatio,
+        s17EncounterConfirmDarkRatio,
         augmentChoiceVisible,
         augmentChoicePoint,
         frontendVariant,
