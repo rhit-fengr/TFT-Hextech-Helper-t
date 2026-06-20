@@ -2,6 +2,7 @@ import { GameStageType } from "../TFTProtocol";
 import { buildAndroidExecutionPlan, type AndroidExecutionPlan } from "../adapters/AndroidActionPlanner";
 import type { ActionPlan, DecisionContext, DecisionEngine, GameAdapter, ObservedState } from "../core/types";
 import { createDefaultDecisionEngine } from "../core/DecisionEngineFactory";
+import { tftDataService } from "./TftDataService";
 import { logger } from "../utils/Logger";
 
 export type AndroidAutomationLoopStatus =
@@ -270,6 +271,7 @@ export class AndroidAutomationLoop {
 
     /** Not Responding 期间积压的经济动作，恢复后补执行 */
     private pendingEconomyActions: ActionPlan[] = [];
+    private warmupDone = false;
 
     constructor(options: AndroidAutomationLoopOptions = {}) {
         this.adapter = options.adapter ?? null;
@@ -281,6 +283,16 @@ export class AndroidAutomationLoop {
     }
 
     public async runOnce(): Promise<AndroidAutomationLoopResult> {
+        // 首次运行时预热数据源（远程英雄/阵容数据），确保 getShopInfoFast 有完整数据
+        if (!this.warmupDone) {
+            try {
+                await tftDataService.warmup();
+                this.warmupDone = true;
+            } catch (error: unknown) {
+                logger.warn(`[AndroidAutomationLoop] 数据预热失败: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
+
         // 超时后自动恢复：超过 SETTLE_MS 后清除标记，允许重新尝试
         if (this.timedOutOperationActive && Date.now() - this.timedOutAt >= AndroidAutomationLoop.SETTLE_MS) {
             logger.info("[AndroidAutomationLoop] 超时恢复：settling 期结束，继续执行");
