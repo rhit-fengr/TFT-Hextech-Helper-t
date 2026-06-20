@@ -38,7 +38,8 @@
     "dist:mac": "electron-vite build && electron-builder --mac",
     "dist:linux": "electron-vite build && electron-builder --linux",
     "android:app:doctor": "tsx scripts/check-android-app-env.ts",
-    "download:champions": "tsx scripts/download-champion-icons.ts"
+    "download:champions": "tsx scripts/download-champion-icons.ts",
+    "calibrate:coords": "tsx scripts/calibrate-coords.ts"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",

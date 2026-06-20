@@ -80,7 +80,11 @@ export class AndroidAdbCapture {
             return false;
         }
 
-        return this.runInputCommand(["tap", String(target.x), String(target.y)], "点击");
+        const result = await this.runInputCommand(["tap", String(target.x), String(target.y)], "点击");
+        if (result) {
+            logger.debug(`[ADB] tap (${point.x.toFixed(3)}, ${point.y.toFixed(3)}) → px(${target.x}, ${target.y})`);
+        }
+        return result;
     }
 
     public async swipeRelative(from: SimplePoint, to: SimplePoint, durationMs = 250): Promise<boolean> {
@@ -90,7 +94,7 @@ export class AndroidAdbCapture {
             return false;
         }
 
-        return this.runInputCommand([
+        const result = await this.runInputCommand([
             "swipe",
             String(fromPoint.x),
             String(fromPoint.y),
@@ -98,6 +102,11 @@ export class AndroidAdbCapture {
             String(toPoint.y),
             String(Math.max(1, Math.trunc(durationMs))),
         ], "滑动");
+
+        if (result) {
+            logger.debug(`[ADB] swipe (${from.x.toFixed(3)},${from.y.toFixed(3)})→(${to.x.toFixed(3)},${to.y.toFixed(3)}) ${durationMs}ms`);
+        }
+        return result;
     }
 
     public async pressBack(): Promise<boolean> {
