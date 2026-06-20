@@ -19,6 +19,7 @@ export type AndroidOperationKind =
     | "EQUIP_TO_BOARD"
     | "PICK_AUGMENT"
     | "PICK_LOOT"
+    | "SELL"
     | "NOOP"
     | "UNSUPPORTED";
 
@@ -359,7 +360,16 @@ export function buildAndroidExecutionPlan(
                 });
                 break;
             }
-            case "SELL":
+            case "SELL": {
+                pushStep({
+                    kind: "SELL",
+                    actionType: action.type,
+                    description: `卖出棋子 ${action.payload.location ?? "未知位置"}`,
+                    reason: action.reason,
+                    priority: action.priority,
+                });
+                break;
+            }
             default: {
                 warnings.push(`暂未支持的安卓动作: ${action.type}`);
                 pushStep({

@@ -242,6 +242,15 @@ function verifyActions(
         }
     }
 
+    if (actionTypes.has("SELL")) {
+        checkedActionTypes.push("SELL");
+        const benchBefore = before.benchSignature?.split("|").length ?? 0;
+        const benchAfter = after.benchSignature?.split("|").length ?? 0;
+        if (benchAfter >= benchBefore && after.gold <= before.gold) {
+            failures.push("SELL did not decrease bench size or increase gold");
+        }
+    }
+
     if (checkedActionTypes.length === 0) {
         return {
             ok: true,

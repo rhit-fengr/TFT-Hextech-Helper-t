@@ -1632,6 +1632,9 @@ export async function classifyAndroidWindowScreenshot(
             lowScoreStarGodItemChoiceVisible ||
             duelStarGodEncounterChoiceVisible ||
             lowPurpleDuelStarGodEncounterChoiceVisible ||
+            shopStarGodEncounterChoiceVisible ||
+            pinkBlueStarGodItemEncounterChoiceVisible ||
+            s17StarGodShopEncounterChoiceVisible ||
             singleEncounterChoiceVisible
             ? ENCOUNTER_CHOICE_RIGHT_POINT
             : ENCOUNTER_CHOICE_LEFT_POINT;
